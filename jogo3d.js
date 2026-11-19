@@ -184,21 +184,36 @@
   let qualidade = Math.min(window.devicePixelRatio || 1, temToque ? 1.5 : 2);
   renderer.setPixelRatio(qualidade);
 
-  const CEU = 0x9fd3f5;
+  // Fim de tarde no Recife: céu degradê, sol baixo e quente, sombras compridas
+  const CEU = 0xf1c39a; // cor do horizonte (neblina)
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(CEU);
+  scene.background = (() => {
+    const c = document.createElement("canvas"); c.width = 4; c.height = 256;
+    const g = c.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, "#3d64a8"); gr.addColorStop(0.45, "#8fb6df"); gr.addColorStop(0.78, "#f4c08c"); gr.addColorStop(1, "#ef925c");
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+    return new THREE.CanvasTexture(c);
+  })();
   scene.fog = new THREE.Fog(CEU, 450, 1300);
   const camera = new THREE.PerspectiveCamera(60, 1, 2, 2200);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x6b6b5a, 0.85));
-  const sol = new THREE.DirectionalLight(0xfff4e0, 0.75);
-  sol.position.set(-0.6, 1, -0.4); scene.add(sol);
+  scene.add(new THREE.HemisphereLight(0xffe4c8, 0x5b5048, 0.62));
+  const sol = new THREE.DirectionalLight(0xffc28a, 1.05);
+  const SOL_DIR = new THREE.Vector3(-0.72, 0.45, 0.52).normalize(); // sol a oeste, baixo
+  sol.castShadow = true;
+  sol.shadow.mapSize.set(temToque ? 1024 : 2048, temToque ? 1024 : 2048);
+  Object.assign(sol.shadow.camera, { left: -380, right: 380, top: 380, bottom: -380, near: 1, far: 1600 });
+  sol.shadow.bias = -0.0008;
+  scene.add(sol, sol.target);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = temToque ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
   // chão = o mapa desenhado
   const texChao = new THREE.CanvasTexture(map);
   texChao.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const chao = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, WORLD_H), new THREE.MeshLambertMaterial({ map: texChao }));
   chao.rotation.x = -Math.PI / 2; chao.position.set(WORLD_W / 2, 0, WORLD_H / 2);
+  chao.receiveShadow = true;
   scene.add(chao);
   // mar e terra em volta do mapa
   const mar = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: 0x1f6fa8 }));
@@ -213,11 +228,18 @@
   // prédios
   const caixa = new THREE.BoxGeometry(1, 1, 1); caixa.translate(0, 0.5, 0);
   function texJanelas() {
-    const c = document.createElement("canvas"); c.width = 64; c.height = 128;
+    const c = document.createElement("canvas"); c.width = 256; c.height = 512;
     const g = c.getContext("2d");
-    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 64, 128);
-    g.fillStyle = "#5d7896";
-    for (let y = 6; y < 124; y += 12) for (let x = 5; x < 60; x += 14) g.fillRect(x, y, 9, 7);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 256, 512);
+    // janelas: algumas com luz acesa (fim de tarde)
+    for (let y = 24; y < 496; y += 48) {
+      g.fillStyle = "#e8e2d6"; g.fillRect(0, y - 10, 256, 4); // laje entre andares
+      for (let x = 20; x < 240; x += 56) {
+        g.fillStyle = Math.random() < 0.22 ? "#ffd58a" : "#4f6a88";
+        g.fillRect(x, y, 36, 28);
+        g.fillStyle = "rgba(255,255,255,.25)"; g.fillRect(x, y, 36, 4);
+      }
+    }
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
@@ -245,6 +267,7 @@
       m4.makeScale(p.w - 6, 3, p.h - 6); m4.setPosition(p.x + p.w / 2, p.alt, p.y + p.h / 2);
       tm.setMatrixAt(k, m4); tm.setColorAt(k, cor.set(telhado(p)));
     });
+    im.castShadow = im.receiveShadow = true; tm.castShadow = true;
     scene.add(im, tm);
   }
   instanciar(torresL, matTorre, () => "#8c96a3");
@@ -265,7 +288,8 @@
     m4.makeScale(0.8, 34, 0.8); m4.setPosition(x, 0, y); troncos.setMatrixAt(arvores.length + k, m4);
     m4.makeScale(17, 4, 17); m4.setPosition(x, 34, y); palmas.setMatrixAt(k, m4);
   });
-  scene.add(troncos, copas, palmas);
+  [troncos, copas, palmas].forEach(m => (m.castShadow = true));
+  scene.add(troncos, copas, palmas); // trocados pelos modelos 3D quando eles carregam
 
   // ---------- Marcos do Recife ----------
   // Igreja em Olinda (fachada virada para a rua de baixo)
@@ -342,7 +366,131 @@
     });
     viatura.userData.giro = [giroA, giroB];
   })();
+  viatura.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(viatura);
+
+  // ---------- Modelos 3D (Kenney, CC0) ----------
+  // Carregam por cima do que já existe: se algum falhar, o jogo segue com as formas simples.
+  const MODELOS = {
+    police: "modelos/carros/police.glb", sedan: "modelos/carros/sedan.glb", taxi: "modelos/carros/taxi.glb",
+    suv: "modelos/carros/suv.glb", hatch: "modelos/carros/hatchback-sports.glb", van: "modelos/carros/van.glb",
+    ambulancia: "modelos/carros/ambulance.glb", cone: "modelos/carros/cone.glb",
+    coqueiro: "modelos/natureza/tree_palmTall.glb", coqueiro2: "modelos/natureza/tree_palmDetailedTall.glb",
+    arvore: "modelos/natureza/tree_default.glb", carvalho: "modelos/natureza/tree_oak.glb",
+  };
+  const mod = {};
+  const EIXO_Y = new THREE.Vector3(0, 1, 0);
+
+  function prepararModelo(obj) {
+    obj.updateMatrixWorld(true);
+    const partes = [], box = new THREE.Box3();
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      const mat = new THREE.MeshLambertMaterial({ map: m.map || null, color: 0xffffff, transparent: !!m.transparent, alphaTest: m.alphaTest || 0 });
+      if (m.color) mat.color.copy(m.color);
+      if (mat.map) mat.map.encoding = THREE.LinearEncoding;
+      const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); geo.computeBoundingBox();
+      box.union(geo.boundingBox);
+      partes.push({ geo, mat });
+    });
+    return { partes, box, tam: box.getSize(new THREE.Vector3()), centro: box.getCenter(new THREE.Vector3()) };
+  }
+
+  function carregarModelos() {
+    if (!THREE.GLTFLoader) return Promise.resolve();
+    const loader = new THREE.GLTFLoader();
+    return Promise.all(Object.entries(MODELOS).map(([k, url]) => new Promise(res => {
+      loader.load(url + "?v=1", g => { try { mod[k] = prepararModelo(g.scene); } catch (e) {} res(); }, undefined, () => res());
+    })));
+  }
+
+  // Posição de um modelo no mundo: centro em (x, z), base no chão, virado para o ângulo dado.
+  // Os carros da Kenney apontam para +Z; giramos +90° para a frente ficar em +X (o "para frente" do jogo).
+  function pose(m, x, z, ang, escala, ehCarro) {
+    const q = new THREE.Quaternion().setFromAxisAngle(EIXO_Y, -ang + (ehCarro ? Math.PI / 2 : 0));
+    const off = new THREE.Vector3(m.centro.x * escala, 0, m.centro.z * escala).applyQuaternion(q);
+    return new THREE.Matrix4().compose(new THREE.Vector3(x - off.x, -m.box.min.y * escala, z - off.z), q, new THREE.Vector3(escala, escala, escala));
+  }
+  function espalhar(m, poses) {
+    if (!poses.length) return;
+    m.partes.forEach(p => {
+      const im = new THREE.InstancedMesh(p.geo, p.mat, poses.length);
+      poses.forEach((mx, k) => im.setMatrixAt(k, mx));
+      im.castShadow = true; im.receiveShadow = true;
+      scene.add(im);
+    });
+  }
+
+  let viaturaModelo = false;
+  function aplicarModelos() {
+    // viatura
+    if (mod.police) {
+      const m = mod.police, esc = 42 / Math.max(m.tam.x, m.tam.z);
+      const g = new THREE.Group();
+      m.partes.forEach(p => { const me = new THREE.Mesh(p.geo, p.mat); me.castShadow = true; g.add(me); });
+      g.scale.setScalar(esc);
+      g.rotation.y = Math.PI / 2;
+      g.position.set(-m.centro.z * esc, -m.box.min.y * esc, m.centro.x * esc);
+      viatura.children.forEach(c => (c.visible = false));
+      viatura.add(g);
+      // giroflex piscando por cima do modelo
+      const topo = (m.box.max.y - m.box.min.y) * esc;
+      viatura.userData.giro.forEach((gm, i) => { gm.visible = true; gm.scale.set(5, 2.5, 7); gm.position.set(-1, topo - 0.5, i ? 4.5 : -4.5); });
+      viaturaModelo = true;
+    }
+    // árvores e coqueiros
+    const temArvore = mod.arvore || mod.carvalho, temCoqueiro = mod.coqueiro || mod.coqueiro2;
+    if (temArvore) {
+      const a = [], b = [];
+      arvores.forEach(([x, y, r], k) => {
+        const m = (k % 3 === 0 && mod.carvalho) || mod.arvore || mod.carvalho;
+        (m === mod.arvore ? a : b).push(pose(m, x, y, k * 1.7, (20 + r * 1.3) / m.tam.y, false));
+      });
+      if (mod.arvore) espalhar(mod.arvore, a);
+      if (mod.carvalho) espalhar(mod.carvalho, b);
+      copas.visible = false;
+    }
+    if (temCoqueiro) {
+      const a = [], b = [];
+      coqueiros.forEach(([x, y], k) => {
+        const m = (k % 2 && mod.coqueiro2) || mod.coqueiro || mod.coqueiro2;
+        (m === mod.coqueiro ? a : b).push(pose(m, x, y, k * 2.3, 46 / m.tam.y, false));
+      });
+      if (mod.coqueiro) espalhar(mod.coqueiro, a);
+      if (mod.coqueiro2) espalhar(mod.coqueiro2, b);
+      palmas.visible = false;
+    }
+    if (temArvore || temCoqueiro) troncos.visible = false;
+    // carros estacionados nas ruas (também viram obstáculo)
+    const tipos = ["sedan", "taxi", "suv", "hatch", "van", "sedan", "taxi"].filter(k => mod[k]);
+    if (tipos.length) {
+      const porTipo = {};
+      const pontos = Object.values(PONTOS).flat().concat([[1200, 1200]]);
+      const longe = (x, y) => pontos.every(([px, py]) => Math.hypot(px - x, py - y) > 110);
+      let s = 11; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+      const vagas = [];
+      for (let k = 1; k <= 6; k++) for (let j = 0; j < ROWS; j++) vagas.push({ x: k * STEP, y: j * STEP + 150, vert: true });
+      for (let k = 1; k <= 5; k++) for (let i = 0; i < COLS; i++) vagas.push({ x: i * STEP + 150, y: k * STEP, vert: false });
+      vagas.forEach(v => {
+        if (r() > 0.42) return;
+        const lado = r() < 0.5 ? -1 : 1, desl = (r() - 0.5) * 80;
+        const x = v.vert ? v.x + lado * 30 : v.x + desl, y = v.vert ? v.y + desl : v.y + lado * 30;
+        if (!longe(x, y)) return;
+        const tipo = tipos[Math.floor(r() * tipos.length)], m = mod[tipo];
+        const ang = v.vert ? (lado > 0 ? Math.PI / 2 : -Math.PI / 2) : (lado > 0 ? 0 : Math.PI);
+        (porTipo[tipo] = porTipo[tipo] || []).push(pose(m, x, y, ang, 38 / Math.max(m.tam.x, m.tam.z), true));
+        solidos.push(v.vert ? [x - 13, y - 20, 26, 40] : [x - 20, y - 13, 40, 26]);
+      });
+      Object.entries(porTipo).forEach(([k, poses]) => espalhar(mod[k], poses));
+    }
+    // ambulância e cones na frente da igreja de Olinda e no Marco Zero, para dar vida
+    if (mod.cone) espalhar(mod.cone, [[1950, 1170], [1975, 1170], [2000, 1170], [1560, 330], [1585, 330]].map(([x, z]) => pose(mod.cone, x, z, 0, 7 / mod.cone.tam.y, false)));
+    if (mod.ambulancia) {
+      espalhar(mod.ambulancia, [pose(mod.ambulancia, 1650, 330, 0, 46 / Math.max(mod.ambulancia.tam.x, mod.ambulancia.tam.z), true)]);
+      solidos.push([1627, 317, 46, 26]);
+    }
+  }
 
   // Seta de GPS em cima da viatura
   const gps = new THREE.Group();
@@ -595,6 +743,12 @@
     b.addEventListener("contextmenu", e => e.preventDefault());
   });
   $("btnStart").onclick = iniciar;
+  // espera os modelos 3D carregarem (no máximo 10 s) antes de liberar o início
+  $("btnStart").disabled = true; $("btnStart").textContent = "Carregando a cidade...";
+  let liberado = false;
+  const liberar = () => { if (liberado) return; liberado = true; $("btnStart").disabled = false; $("btnStart").textContent = "Iniciar plantão"; };
+  carregarModelos().then(() => { try { aplicarModelos(); } catch (e) { console.warn(e); } liberar(); });
+  setTimeout(liberar, 10000);
   $("btnAgain").onclick = iniciar;
   $("btnNext").onclick = seguir;
   $("btnShare").onclick = compartilhar;
@@ -689,6 +843,9 @@
     } else gps.visible = false;
 
     atualizarCamera(dt);
+    // a sombra acompanha a viatura (só a área perto dela tem sombra, para ficar leve)
+    sol.target.position.set(car.x, 0, car.y);
+    sol.position.set(car.x + SOL_DIR.x * 700, SOL_DIR.y * 700, car.y + SOL_DIR.z * 700);
     renderer.render(scene, camera);
     minimapa();
   }
@@ -707,16 +864,26 @@
 
   // Qualidade automática: se o aparelho estiver lento, diminui a resolução
   let amostras = 0, soma = 0;
+  // 1º baixa a resolução; se ainda estiver lento, desliga as sombras
+  const QUALIDADE_FIXA = new URLSearchParams(location.search).has("alta");
   function ajustarQualidade(dt) {
-    if (pausado || qualidade <= 0.75) return;
+    if (QUALIDADE_FIXA || pausado || (qualidade <= 0.75 && !renderer.shadowMap.enabled)) return;
     amostras++; soma += dt;
     if (amostras < 90) return;
     const media = soma / amostras; amostras = 0; soma = 0;
-    if (media > 1 / 40) {
-      qualidade = Math.max(0.75, qualidade - 0.5);
+    if (media <= 1 / 40) return;
+    if (qualidade > 1) {
+      qualidade = Math.max(1, qualidade - 0.5);
       renderer.setPixelRatio(qualidade);
       redimensionar();
-      if (qualidade <= 1) { scene.fog.far = 1000; camera.far = 1300; camera.updateProjectionMatrix(); }
+    } else if (renderer.shadowMap.enabled) {
+      renderer.shadowMap.enabled = false; sol.castShadow = false;
+      scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+      scene.fog.far = 1000; camera.far = 1300; camera.updateProjectionMatrix();
+    } else {
+      qualidade = 0.75;
+      renderer.setPixelRatio(qualidade);
+      redimensionar();
     }
   }
 
