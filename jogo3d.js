@@ -174,6 +174,20 @@
   }
 
   desenharMapa();
+  // ---------- Prévia do visual "caprichado" (?visual=caprichado) ----------
+  const CAPRICHADO = new URLSearchParams(location.search).get("visual") === "caprichado";
+  if (CAPRICHADO) {
+    // faixas de pedestre na chegada de cada cruzamento
+    const g = map.getContext("2d");
+    g.fillStyle = "rgba(245,245,240,.88)";
+    for (let i = 1; i < COLS; i++) for (let j = 1; j < ROWS; j++) {
+      const cx = i * STEP, cy = j * STEP;
+      for (let k = -36; k <= 36; k += 12) {
+        g.fillRect(cx + k - 3, cy - 70, 6, 18); g.fillRect(cx + k - 3, cy + 52, 6, 18);   // atravessando a rua vertical
+        g.fillRect(cx - 70, cy + k - 3, 18, 6); g.fillRect(cx + 52, cy + k - 3, 18, 6);   // atravessando a rua horizontal
+      }
+    }
+  }
 
   // ---------- Cena 3D ----------
   const $ = id => document.getElementById(id);
@@ -200,6 +214,18 @@
   })();
   scene.fog = new THREE.Fog(CEU, 450, 1300);
   const camera = new THREE.PerspectiveCamera(60, 1, 2, 2200);
+  // brilho de luz (sprite somado): giroflex, faróis, postes
+  const texBrilho = (() => {
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.25, "rgba(255,255,255,.55)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const brilho = (cor, tam) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texBrilho, color: cor, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.scale.setScalar(tam); return sp;
+  };
 
   scene.add(new THREE.HemisphereLight(0xffe4c8, 0x5b5048, 0.62));
   const sol = new THREE.DirectionalLight(0xffc28a, 1.05);
@@ -220,7 +246,9 @@
   chao.receiveShadow = true;
   scene.add(chao);
   // mar e terra em volta do mapa
-  const mar = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: 0x1f6fa8 }));
+  const mar = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), CAPRICHADO
+    ? new THREE.MeshPhongMaterial({ color: 0x1d5f95, specular: 0xffd2a0, shininess: 90 })
+    : new THREE.MeshLambertMaterial({ color: 0x1f6fa8 }));
   mar.rotation.x = -Math.PI / 2; mar.position.set(WORLD_W / 2 + 4000, -0.6, WORLD_H / 2); scene.add(mar);
   const terra = new THREE.Mesh(new THREE.PlaneGeometry(6000, 9000), new THREE.MeshLambertMaterial({ color: 0x55734a }));
   terra.rotation.x = -Math.PI / 2; terra.position.set(-3000, -0.4, WORLD_H / 2); scene.add(terra);
@@ -369,9 +397,81 @@
       const r = new THREE.Mesh(roda, preto); r.position.set(x, 4.5, z); viatura.add(r);
     });
     viatura.userData.giro = [giroA, giroB];
+    // faróis acesos (o brilho aparece na prévia caprichada)
+    viatura.userData.farois = [[20.6, 5, -7], [20.6, 5, 7]];
   })();
   viatura.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(viatura);
+
+  // ---------- Prévia caprichada: mar com ondas, postes, brilhos e acabamento de imagem ----------
+  let ondas = null, composer = null, passeAcabamento = null;
+  const brilhosViatura = [];
+  if (CAPRICHADO) {
+    // mar: malha com ondas e reflexo do sol por cima do mar pintado no chão
+    const geo = new THREE.PlaneGeometry(1400, WORLD_H + 1200, 70, 90); geo.rotateX(-Math.PI / 2);
+    ondas = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: 0x1d6aa3, specular: 0xffe0b0, shininess: 70, transparent: true, opacity: 0.93 }));
+    ondas.position.set(SEA_X + 700, 0.8, WORLD_H / 2); ondas.receiveShadow = true;
+    ondas.userData.base = Float32Array.from(geo.attributes.position.array);
+    scene.add(ondas);
+    // postes de luz na calçada, com lâmpada acesa (fim de tarde)
+    const pts = [];
+    for (let k = 0; k <= COLS; k++) for (let y = 75; y < WORLD_H; y += 150) if (y % STEP) pts.push([k * STEP + 47, y]);
+    for (let k = 1; k < ROWS; k++) for (let x = 75; x < LAND_W; x += 150) if (x % STEP) pts.push([x, k * STEP - 47]);
+    const hasteG = new THREE.CylinderGeometry(0.9, 1.2, 34, 6); hasteG.translate(0, 17, 0);
+    const lampG = new THREE.BoxGeometry(5, 2, 3);
+    const hastes = new THREE.InstancedMesh(hasteG, lambert(0x3a3f47), pts.length);
+    const lamps = new THREE.InstancedMesh(lampG, new THREE.MeshBasicMaterial({ color: 0xfff1c4 }), pts.length);
+    const glowPos = new Float32Array(pts.length * 3);
+    pts.forEach(([x, z], i) => {
+      m4.makeTranslation(x, 0, z); hastes.setMatrixAt(i, m4);
+      m4.makeTranslation(x, 34, z); lamps.setMatrixAt(i, m4);
+      glowPos.set([x, 34, z], i * 3);
+    });
+    hastes.castShadow = true;
+    const glowGeo = new THREE.BufferGeometry(); glowGeo.setAttribute("position", new THREE.BufferAttribute(glowPos, 3));
+    const glows = new THREE.Points(glowGeo, new THREE.PointsMaterial({ map: texBrilho, color: 0xffc46b, size: 16, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
+    scene.add(hastes, lamps, glows);
+    // brilho do giroflex e dos faróis
+    const gV = brilho(0xff3b3b, 18), gA = brilho(0x3b7bff, 18); gV.position.set(-1, 22, -4.5); gA.position.set(-1, 22, 4.5);
+    const f1 = brilho(0xfff1b0, 16), f2 = brilho(0xfff1b0, 16); f1.position.set(21.5, 5, -7); f2.position.set(21.5, 5, 7);
+    viatura.add(gV, gA, f1, f2); brilhosViatura.push(gV, gA);
+    // acabamento de imagem: brilho (bloom) + contraste de cinema, cor mais viva e vinheta
+    if (THREE.EffectComposer && THREE.UnrealBloomPass) {
+      composer = new THREE.EffectComposer(renderer);
+      composer.addPass(new THREE.RenderPass(scene, camera));
+      composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(512, 512), 0.28, 0.35, 0.93));
+      passeAcabamento = new THREE.ShaderPass({
+        uniforms: { tDiffuse: { value: null }, sat: { value: 1.3 }, vinheta: { value: 0.35 } },
+        vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+        fragmentShader: `uniform sampler2D tDiffuse; uniform float sat; uniform float vinheta; varying vec2 vUv;
+          vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }
+          void main(){
+            vec3 c = texture2D(tDiffuse, vUv).rgb;
+            c = aces(c * 0.95);                                   // contraste de cinema
+            float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+            c = mix(vec3(l), c, sat);                             // cor mais viva
+            c *= vec3(1.04, 1.0, 0.95);                           // puxa para o dourado do fim de tarde
+            float d = distance(vUv, vec2(0.5));
+            c *= 1.0 - vinheta * smoothstep(0.35, 0.85, d);       // vinheta
+            gl_FragColor = vec4(c, 1.0);
+          }`,
+      });
+      composer.addPass(passeAcabamento);
+    }
+  }
+  function atualizarCaprichado(t) {
+    if (!CAPRICHADO) return;
+    if (ondas) {
+      const pos = ondas.geometry.attributes.position, a = pos.array, b = ondas.userData.base, s = t / 1000;
+      for (let i = 0; i < a.length; i += 3) {
+        const x = b[i], z = b[i + 2];
+        a[i + 1] = Math.sin(x * 0.02 + s * 1.6) * 1.6 + Math.sin(z * 0.013 - s * 1.1) * 1.4 + Math.sin((x + z) * 0.035 + s * 2.3) * 0.6;
+      }
+      pos.needsUpdate = true; ondas.geometry.computeVertexNormals();
+    }
+    const pisca = Math.floor(t / 180) % 2 === 0;
+    if (brilhosViatura.length) { brilhosViatura[0].visible = pisca; brilhosViatura[1].visible = !pisca; }
+  }
 
   // ---------- Modelos 3D (Kenney, CC0) ----------
   // Carregam por cima do que já existe: se algum falhar, o jogo segue com as formas simples.
@@ -1514,6 +1614,7 @@
   function redimensionar() {
     vw = innerWidth; vh = innerHeight;
     renderer.setSize(vw, vh, false);
+    if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(vw, vh); }
     camera.aspect = vw / vh;
     camera.fov = vw < vh ? 72 : 60; // celular em pé enxerga um pouco mais dos lados
     camera.updateProjectionMatrix();
@@ -1591,7 +1692,8 @@
     // a sombra acompanha a viatura (só a área perto dela tem sombra, para ficar leve)
     sol.target.position.set(car.x, 0, car.y);
     sol.position.set(car.x + SOL_DIR.x * 700, SOL_DIR.y * 700, car.y + SOL_DIR.z * 700);
-    renderer.render(scene, camera);
+    atualizarCaprichado(t);
+    if (composer) composer.render(); else renderer.render(scene, camera);
     minimapa();
   }
 
