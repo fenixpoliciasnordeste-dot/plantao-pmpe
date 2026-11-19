@@ -174,8 +174,8 @@
   }
 
   desenharMapa();
-  // ---------- Prévia do visual "caprichado" (?visual=caprichado) ----------
-  const CAPRICHADO = new URLSearchParams(location.search).get("visual") === "caprichado";
+  // ---------- Visual caprichado (padrão; ?visual=simples volta ao visual antigo) ----------
+  const CAPRICHADO = new URLSearchParams(location.search).get("visual") !== "simples";
   if (CAPRICHADO) {
     // faixas de pedestre na chegada de cada cruzamento
     const g = map.getContext("2d");
@@ -403,7 +403,7 @@
   viatura.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(viatura);
 
-  // ---------- Prévia caprichada: mar com ondas, postes, brilhos e acabamento de imagem ----------
+  // ---------- Visual caprichado: mar com ondas, postes, brilhos e acabamento de imagem ----------
   let ondas = null, composer = null, passeAcabamento = null;
   const brilhosViatura = [];
   if (CAPRICHADO) {
@@ -459,9 +459,10 @@
       composer.addPass(passeAcabamento);
     }
   }
+  let ondasParadas = false;
   function atualizarCaprichado(t) {
     if (!CAPRICHADO) return;
-    if (ondas) {
+    if (ondas && !ondasParadas) {
       const pos = ondas.geometry.attributes.position, a = pos.array, b = ondas.userData.base, s = t / 1000;
       for (let i = 0; i < a.length; i += 3) {
         const x = b[i], z = b[i + 2];
@@ -1745,7 +1746,7 @@
   // 1º baixa a resolução; se ainda estiver lento, desliga as sombras
   const QUALIDADE_FIXA = new URLSearchParams(location.search).has("alta");
   function ajustarQualidade(dt) {
-    if (QUALIDADE_FIXA || pausado || (qualidade <= 0.75 && !renderer.shadowMap.enabled)) return;
+    if (QUALIDADE_FIXA || pausado || (qualidade <= 0.75 && !renderer.shadowMap.enabled && !composer)) return;
     amostras++; soma += dt;
     if (amostras < 60) return;
     const media = soma / amostras; amostras = 0; soma = 0;
@@ -1758,6 +1759,9 @@
       renderer.shadowMap.enabled = false; sol.castShadow = false;
       scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
       scene.fog.far = 1000; camera.far = 1300; camera.updateProjectionMatrix();
+    } else if (composer) {
+      // tira o acabamento de imagem (brilho/contraste) e congela as ondas
+      composer = null; ondasParadas = true;
     } else {
       qualidade = 0.75;
       renderer.setPixelRatio(qualidade);
