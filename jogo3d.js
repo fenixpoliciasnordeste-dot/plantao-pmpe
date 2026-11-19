@@ -493,7 +493,6 @@
   }
 
   // ---------- Cidade viva: trânsito e pedestres ----------
-  const moveis = [];   // { x, y, r } — o que se move e a viatura não atravessa
   const transito = []; // carros andando
   const pedestres = [];
   const FAIXA = 14;    // distância do centro da rua até o meio da faixa (mão direita)
@@ -541,9 +540,9 @@
       const a = no(...de), b = no(...para), d = dir(a, b), r = direita(d);
       const tipo = tipos[k % tipos.length];
       const c = { tipo, de, para, pontos: [], x: (a.x + b.x) / 2 + r.x * FAIXA, y: (a.y + b.y) / 2 + r.y * FAIXA,
-        a: Math.atan2(d.y, d.x), v: 0, vmax: 110 + Math.random() * 70, espera: 0, fantasma: 0, r: 18 };
+        a: Math.atan2(d.y, d.x), v: 0, vmax: 110 + Math.random() * 70, espera: 0, fantasma: 0, r: 18, rodando: 0, giroBatida: 0 };
       proximoTrecho(c);
-      transito.push(c); moveis.push(c);
+      transito.push(c);
       (porTipo[tipo] = porTipo[tipo] || []).push(c);
     }
     // um InstancedMesh por peça de cada modelo: poucas chamadas de desenho mesmo com muitos carros
@@ -563,11 +562,24 @@
         const rx = o.x - c.x, ry = o.y - c.y, fr = rx * hx + ry * hy, lat = Math.abs(rx * hy - ry * hx);
         return fr > 0 && fr < dist && lat < larg;
       };
-      if (olha(car, 70, 26) || Math.hypot(car.x - c.x, car.y - c.y) < 40) bloqueado = true;
+      // rodando depois de uma batida: perde o controle por um instante
+      if (c.rodando > 0) { c.rodando -= dt; c.a += c.giroBatida * dt; c.giroBatida *= 0.92; }
+      if (c.fantasma <= 0 && (olha(car, 70, 26) || Math.hypot(car.x - c.x, car.y - c.y) < 40)) bloqueado = true;
       if (!bloqueado && c.fantasma <= 0) for (const o of transito) if (o !== c && olha(o, 58, 20)) { bloqueado = true; break; }
-      if (!bloqueado) for (const p of pedestres.concat(pessoasCena)) if (olha(p, 45, 16)) { bloqueado = true; break; }
+      if (!bloqueado) for (const p of pedestres.concat(pessoasCena)) if (!p.morto && olha(p, 45, 16)) { bloqueado = true; break; }
+      if (c.rodando > 0) bloqueado = true;
       c.espera = bloqueado ? c.espera + dt : 0;
-      if (c.espera > 2.5) { c.fantasma = 1.5; c.espera = 0; } // destrava cruzamento entupido (só entre carros)
+      // esperou demais: se for a viatura parada na frente, ultrapassa pela esquerda; se for cruzamento entupido, segue
+      if (c.espera > 2.2 && c.rodando <= 0) {
+        if (olha(car, 90, 30)) {
+          const lx = hy, ly = -hx; // esquerda de quem dirige
+          c.pontos.unshift(
+            { x: c.x + hx * 25 + lx * 32, y: c.y + hy * 25 + ly * 32 },
+            { x: car.x + hx * 30 + lx * 34, y: car.y + hy * 30 + ly * 34 },
+            { x: car.x + hx * 80 + lx * 12, y: car.y + hy * 80 + ly * 12 });
+        }
+        c.fantasma = 2; c.espera = 0;
+      }
       c.fantasma -= dt;
       const alvoV = bloqueado ? 0 : c.vmax;
       c.v += Math.sign(alvoV - c.v) * Math.min(Math.abs(alvoV - c.v), (bloqueado ? 420 : 160) * dt);
@@ -741,7 +753,10 @@
       obj.scale.setScalar(17 / alt);
       const mixer = new THREE.AnimationMixer(obj);
       const clip = g.animations.find(a => a.name === "walk") || g.animations[0];
-      if (clip) { const ac = mixer.clipAction(clip); ac.play(); ac.time = Math.random() * clip.duration; }
+      let acAndar = null, acCair = null;
+      if (clip) { acAndar = mixer.clipAction(clip); acAndar.play(); acAndar.time = Math.random() * clip.duration; }
+      const clipCair = g.animations.find(a => a.name === "die");
+      if (clipCair) { acCair = mixer.clipAction(clipCair); acCair.setLoop(THREE.LoopOnce); acCair.clampWhenFinished = true; }
       const naOrla = k % 4 === 0;
       let rota;
       if (naOrla) rota = orla;
@@ -750,10 +765,10 @@
         rota = caminhoQuarteirao(i, j);
       }
       const p = { obj, mixer, rota, seg: Math.floor(Math.random() * rota.length), t: Math.random(), v: 16 + Math.random() * 10,
-        sentido: Math.random() < 0.5 ? 1 : -1, x: 0, y: 0, a: 0, r: 7, parado: 0 };
+        sentido: Math.random() < 0.5 ? 1 : -1, x: 0, y: 0, a: 0, r: 7, parado: 0, acAndar, acCair, morto: false, tMorto: 0 };
       if (naOrla) { p.seg = 0; p.sentido = 1; }
       posicionarPedestre(p, 0);
-      scene.add(obj); pedestres.push(p); moveis.push(p);
+      scene.add(obj); pedestres.push(p);
     }
   }
   function posicionarPedestre(p, dt) {
@@ -771,12 +786,79 @@
     for (const p of pedestres) {
       const perto = Math.abs(p.x - car.x) < VIS && Math.abs(p.y - car.y) < VIS;
       p.obj.visible = perto;
+      if (p.morto) {
+        // caído no chão; depois de um tempo some e volta a andar em outro quarteirão
+        p.tMorto += dt; p.mixer.update(dt);
+        if (p.tMorto > 7) reviverPedestre(p);
+        continue;
+      }
       if (!perto) continue;
       // para se a viatura estiver encostando nele
-      const parar = Math.hypot(car.x - p.x, car.y - p.y) < 34;
+      const parar = Math.hypot(car.x - p.x, car.y - p.y) < 34 && Math.abs(car.v) < 60;
       if (!parar) posicionarPedestre(p, dt);
       p.mixer.update(parar ? 0 : dt * (p.v / 20));
     }
+  }
+
+  function atropelar(p, vx, vy) {
+    p.morto = true; p.tMorto = 0;
+    // é arremessado um pouco na direção da batida
+    colocarPedestre(p, p.x + vx * 0.12, p.y + vy * 0.12);
+    p.obj.rotation.y = -Math.atan2(-vy, -vx) + Math.PI / 2;
+    if (p.acCair) { p.acAndar && p.acAndar.stop(); p.acCair.reset().play(); }
+    else p.obj.rotation.x = -Math.PI / 2;
+    bip([180, 120], 0.12, "square", 0.06);
+    if (!pausado) {
+      xp = Math.max(0, xp - 25); atualizarHud();
+      toast("Civil atropelado!<small>A Corregedoria anotou: −25 XP</small>", 2200);
+    }
+  }
+  function reviverPedestre(p) {
+    p.morto = false; p.obj.rotation.x = 0;
+    if (p.acCair) p.acCair.stop();
+    if (p.acAndar) p.acAndar.reset().play();
+    if (p.rota.length !== 2) p.rota = caminhoQuarteirao(Math.floor(Math.random() * COLS), Math.floor(Math.random() * ROWS));
+    p.seg = 0; p.t = Math.random();
+    posicionarPedestre(p, 0);
+  }
+  const colocarPedestre = (p, x, y) => { p.x = x; p.y = y; p.obj.position.set(x, 0, y); };
+
+  // Batidas: tudo se empurra em vez de travar (estilo jogo de mundo aberto)
+  function resolverBatidas(dt) {
+    const RV = 15, RC = 18; // raio da viatura e dos carros
+    const vx = Math.cos(car.a) * car.v, vy = Math.sin(car.a) * car.v;
+    const ox = car.x, oy = car.y; // se o empurrão jogar a viatura num prédio, desfaz
+    for (const c of transito) {
+      const dx = c.x - car.x, dy = c.y - car.y, d = Math.hypot(dx, dy) || 0.01, sob = RV + RC - d;
+      if (sob <= 0) continue;
+      const nx = dx / d, ny = dy / d;
+      // a viatura é mais pesada quando vem rápido: o carro é jogado para o lado e roda
+      const forca = Math.max(0, vx * nx + vy * ny);
+      const kc = c.fantasma > 0 ? 0.5 : 0.75; // ultrapassando: os dois cedem
+      c.x += nx * sob * kc; c.y += ny * sob * kc;
+      car.x -= nx * sob * (1 - kc); car.y -= ny * sob * (1 - kc);
+      if (forca > 60 && c.rodando <= 0) {
+        c.rodando = 0.9; c.giroBatida = (Math.random() < 0.5 ? -1 : 1) * Math.min(7, forca / 40); c.v = 0;
+        car.v *= 0.55;
+        bip([140, 90], 0.1, "sawtooth", 0.07);
+      } else car.v *= 0.9;
+    }
+    // carro com carro: separa para não ficarem grudados
+    for (let i = 0; i < transito.length; i++) for (let j = i + 1; j < transito.length; j++) {
+      const a = transito[i], b = transito[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01, sob = 2 * RC - d;
+      if (sob <= 0) continue;
+      const nx = dx / d, ny = dy / d;
+      a.x -= nx * sob / 2; a.y -= ny * sob / 2; b.x += nx * sob / 2; b.y += ny * sob / 2;
+    }
+    // pedestres: devagar só empurra a viatura para trás; rápido é atropelamento
+    for (const p of pedestres) {
+      if (p.morto || !p.obj.visible) continue;
+      const dx = p.x - car.x, dy = p.y - car.y, d = Math.hypot(dx, dy) || 0.01, sob = RV + p.r - d;
+      if (sob <= 0) continue;
+      if (Math.abs(car.v) > 60) atropelar(p, vx, vy);
+      else { car.x -= dx / d * sob; car.y -= dy / d * sob; car.v *= 0.5; }
+    }
+    if (bate(car.x, car.y)) { car.x = ox; car.y = oy; }
   }
 
   // Seta de GPS em cima da viatura
@@ -1162,7 +1244,6 @@
       const cx = Math.max(bx, Math.min(x, bx + bw)), cy = Math.max(by, Math.min(y, by + bh));
       if ((x - cx) ** 2 + (y - cy) ** 2 < R * R) return true;
     }
-    for (const o of moveis) if ((x - o.x) ** 2 + (y - o.y) ** 2 < (R + o.r) ** 2) return true;
     return false;
   };
   const naGrama = (x, y) => parques.some(([px, py, pw, ph]) => x > px && x < px + pw && y > py && y < py + ph) || x > LAND_W + 45;
@@ -1314,7 +1395,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (!pausado) atualizar(dt);
-    atualizarTransito(dt); atualizarPedestres(dt); atualizarCena(dt); atualizarSom(); // a cidade segue viva até com a pergunta aberta
+    atualizarTransito(dt); atualizarPedestres(dt); if (!pausado) resolverBatidas(dt); atualizarCena(dt); atualizarSom(); // a cidade segue viva até com a pergunta aberta
     desenhar(t, dt);
     ajustarQualidade(dt);
     requestAnimationFrame(loop);
