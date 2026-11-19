@@ -13,8 +13,9 @@
   const LEAD_DEPOIS_DE = 3;     // pede nome e WhatsApp depois desta ocorrência
   const MENTORIA_SE_ERROS = 3;  // mostra a mentoria para quem errar isso ou mais (ou chegar a Sargento)
 
-  // Sem 3D no aparelho? Vai para a versão 2D.
-  if (!window.THREE) { location.replace("index-2d.html"); return; }
+  // Sem 3D? Vai para a versão 2D, dizendo o motivo (aparece num aviso lá).
+  const ir2d = motivo => location.replace("index-2d.html?motivo=" + motivo);
+  if (!window.THREE) { ir2d("biblioteca"); return; }
 
   // ---------- Mapa ----------
   const STEP = 300, ROAD = 90, COLS = 7, ROWS = 6;
@@ -178,7 +179,8 @@
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !temToque, powerPreference: "high-performance" });
-  } catch (e) { location.replace("index-2d.html"); return; }
+    if (!renderer.getContext()) throw new Error("sem contexto");
+  } catch (e) { ir2d("webgl"); return; }
   let qualidade = Math.min(window.devicePixelRatio || 1, temToque ? 1.5 : 2);
   renderer.setPixelRatio(qualidade);
 

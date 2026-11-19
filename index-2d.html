@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b1830">
 <title>Plantão PMPE</title>
@@ -155,6 +156,10 @@
       <li>Siga a seta até a ocorrência. Acertou, ganha XP. Chegou rápido, ganha bônus.</li>
     </ul>
     <div class="ranks"><div class="on">Soldado</div><div>Cabo · 400 XP</div><div>Sargento · 900 XP</div></div>
+    <div id="aviso2d" hidden style="background:#fff4d6;border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.4;margin:10px 0">
+      <b>Você está na versão 2D.</b> <span id="aviso2dMotivo"></span>
+      <a href="index.html" style="display:block;margin-top:6px;font-weight:800;color:#0b1830">Tentar a versão 3D de novo</a>
+    </div>
     <button class="btn gold" id="btnStart">Iniciar plantão</button>
     <p class="fine" style="text-align:center">10 ocorrências · cerca de 5 minutos</p>
   </div>
@@ -209,7 +214,7 @@
   </div>
 </div>
 
-<script src="questoes.js"></script>
+<script src="questoes.js?v=3"></script>
 <script>
 (() => {
   // ---------- Configuração ----------
@@ -786,6 +791,22 @@
   redimensionar();
   rodando = true; ultimo = performance.now(); requestAnimationFrame(loop); // mapa ao fundo da tela inicial
   window.__plantao = { car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia }; // para testes
+})();
+</script>
+<script>
+// Aviso de por que caiu no 2D
+(() => {
+  const m = new URLSearchParams(location.search).get("motivo");
+  if (!m) return;
+  const ua = navigator.userAgent;
+  const noApp = /Instagram|FBAN|FBAV|WhatsApp|TikTok|musical_ly|Bytedance/i.test(ua);
+  let txt = m === "webgl"
+    ? "Este navegador não liberou o 3D."
+    : "A parte 3D não carregou (pode ser a internet).";
+  if (noApp) txt += " Parece que você abriu dentro de um app (Instagram, WhatsApp ou TikTok): toque nos três pontinhos e escolha abrir no Chrome ou no Safari.";
+  else txt += " Tente abrir no Chrome ou no Safari atualizados.";
+  document.getElementById("aviso2dMotivo").textContent = txt;
+  document.getElementById("aviso2d").hidden = false;
 })();
 </script>
 </body>
