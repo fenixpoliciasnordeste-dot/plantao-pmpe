@@ -44,10 +44,23 @@
     .mission { order: 3; flex-basis: 100%; padding: 6px 10px; }
     #minimap { width: 96px; height: 72px; }
   }
-  .mute { position: fixed; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 12px); pointer-events: auto;
+  .narr, .stem { white-space: pre-line; }
+
+  /* Controle na tela (celular) */
+  .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom) + 18px); display: flex; gap: 12px; z-index: 5;
+    user-select: none; -webkit-user-select: none; }
+  .pad.left { left: 16px; }
+  .pad.right { right: 16px; flex-direction: column; }
+  .pad button { width: 72px; height: 72px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35);
+    background: rgba(11,24,48,.62); color: #fff; font-size: 30px; font-weight: 900; touch-action: none;
+    display: flex; align-items: center; justify-content: center; padding: 0; -webkit-user-select: none; }
+  .pad button.on { background: rgba(242,182,50,.9); color: var(--navy); border-color: var(--gold); }
+  .pad button small { display: block; font-size: 10px; font-weight: 700; margin-top: -4px; }
+  .pad .gas { flex-direction: column; }
+  .mute { position: fixed; left: 50%; margin-left: -21px; bottom: calc(env(safe-area-inset-bottom) + 18px); pointer-events: auto;
     background: rgba(11,24,48,.86); color: var(--ink); border: 1px solid rgba(255,255,255,.18); border-radius: 50%;
     width: 42px; height: 42px; font-size: 18px; cursor: pointer; }
-  .hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 16px);
+  .hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 72px);
     font-size: 12px; color: var(--muted); background: rgba(11,24,48,.8); padding: 6px 12px; border-radius: 20px;
     pointer-events: none; white-space: nowrap; }
   .toast { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%) scale(.9); opacity: 0;
@@ -118,8 +131,16 @@
   <div class="pill mission" id="mission"></div>
   <canvas id="minimap" width="240" height="180"></canvas>
 </div>
-<div class="hint" id="hint" hidden>Segure o dedo na tela (ou use as setas) para dirigir</div>
+<div class="hint" id="hint" hidden>Use as setas para dirigir</div>
 <button class="mute" id="mute" hidden aria-label="Som">🔊</button>
+<div class="pad left" id="padL" hidden>
+  <button data-key="arrowleft" aria-label="Virar à esquerda">◀</button>
+  <button data-key="arrowright" aria-label="Virar à direita">▶</button>
+</div>
+<div class="pad right" id="padR" hidden>
+  <button class="gas" data-key="arrowup" aria-label="Acelerar">▲<small>FRENTE</small></button>
+  <button class="gas" data-key="arrowdown" aria-label="Ré">▼<small>RÉ</small></button>
+</div>
 <div class="toast" id="toast"></div>
 
 <!-- Tela inicial -->
@@ -129,7 +150,7 @@
     <h1>Plantão PMPE</h1>
     <p>Você está de serviço no Recife. Patrulhe com a viatura, atenda as ocorrências e resolva cada uma com o que cai na prova.</p>
     <ul class="how">
-      <li><b>Celular:</b> segure o dedo na tela e a viatura vai na direção do dedo.</li>
+      <li><b>Celular:</b> ◀ ▶ do lado esquerdo para virar, ▲ ▼ do lado direito para frente e ré.</li>
       <li><b>Computador:</b> setas ou W A S D.</li>
       <li>Siga a seta até a ocorrência. Acertou, ganha XP. Chegou rápido, ganha bônus.</li>
     </ul>
@@ -197,6 +218,8 @@
     { nome: "Cabo", xp: 400 },
     { nome: "Sargento", xp: 900 },
   ];
+  const POR_PLANTAO = 10;     // ocorrências por plantão
+  const RLM_POR_PLANTAO = 6;  // quantas delas são de RLM; o resto vem das outras matérias
   const XP_ACERTO = 100;
   const LEAD_DEPOIS_DE = 3; // pede nome e WhatsApp depois desta ocorrência
   const MENTORIA_SE_ERROS = 3; // mostra a mentoria para quem errar isso ou mais (ou chegar a Sargento)
@@ -403,15 +426,32 @@
     return a;
   }
 
+  const LOCAL = { "Olinda": "em Olinda", "Marco Zero": "no Marco Zero", "Boa Viagem": "em Boa Viagem", "Av. Agamenon": "na Av. Agamenon" };
+
   function montarFila() {
-    const usados = {};
-    return window.QUESTOES.map(q => {
-      const lista = PONTOS[q.bairro] || PONTOS["Marco Zero"];
-      const n = (usados[q.bairro] = (usados[q.bairro] || 0) + 1) - 1;
-      const [x, y] = lista[n % lista.length];
+    // sorteia as questões do plantão: RLM pesa mais
+    const banco = window.QUESTOES;
+    const rlm = embaralhar(banco.filter(q => q.area === "RLM")).slice(0, RLM_POR_PLANTAO);
+    const outras = embaralhar(banco.filter(q => q.area !== "RLM")).slice(0, POR_PLANTAO - rlm.length);
+    const escolhidas = embaralhar([...rlm, ...outras]);
+
+    // cada ocorrência ganha um ponto do mapa (as que citam um bairro ficam nele)
+    let livres = embaralhar(Object.entries(PONTOS).flatMap(([b, l]) => l.map(([x, y]) => ({ b, x, y }))));
+    const pegar = b => {
+      const k = Math.max(0, livres.findIndex(p => !b || p.b === b));
+      const p = livres[k] || { b: "Marco Zero", x: 1800, y: 750 };
+      livres.splice(k, 1);
+      return p;
+    };
+    const fixas = escolhidas.map(q => (q.bairro ? pegar(q.bairro) : null));
+    return escolhidas.map((q, i) => {
+      const p = fixas[i] || pegar(null);
+      let narrativa = q.narrativa.replace(/\{local\}/g, LOCAL[p.b]);
+      narrativa = narrativa.charAt(0).toUpperCase() + narrativa.slice(1);
       // embaralha as alternativas, guardando qual é a certa
       const ordem = embaralhar(q.alternativas.map((t, k) => k));
-      return { ...q, x, y, alternativas: ordem.map(k => q.alternativas[k]), correta: ordem.indexOf(q.correta) };
+      return { ...q, bairro: p.b, x: p.x, y: p.y, narrativa,
+        alternativas: ordem.map(k => q.alternativas[k]), correta: ordem.indexOf(q.correta) };
     });
   }
 
@@ -453,7 +493,8 @@
     car.x = 1200; car.y = 1200; car.a = -Math.PI / 2; car.v = 0;
     inicio = performance.now();
     ["sStart", "sEnd"].forEach(s => $(s).classList.remove("on"));
-    $("hud").hidden = false; $("mute").hidden = false; $("hint").hidden = false;
+    $("hud").hidden = false; $("mute").hidden = false; $("hint").hidden = temToque;
+    mostrarPad(true);
     setTimeout(() => ($("hint").hidden = true), 6000);
     atualizarHud();
     proximaOcorrencia();
@@ -471,6 +512,8 @@
 
   function abrirOcorrencia() {
     pausado = true; car.v = 0; pointer = null;
+    Object.keys(keys).forEach(k => (keys[k] = false));
+    document.querySelectorAll(".pad button.on").forEach(b => b.classList.remove("on"));
     const q = atual;
     const seg = (performance.now() - inicioOcorrencia) / 1000;
     q.bonus = seg < 25 ? 50 : seg < 40 ? 25 : 0;
@@ -540,7 +583,7 @@
 
   function fim() {
     pausado = true; atual = null;
-    $("hud").hidden = true; $("mute").hidden = true;
+    $("hud").hidden = true; $("mute").hidden = true; mostrarPad(false);
     const r = rankDe(xp), erros = fila.length - acertos;
     const min = Math.max(1, Math.round((performance.now() - inicio) / 60000));
     $("endTitle").textContent = `Você terminou como ${r.nome}`;
@@ -573,7 +616,22 @@
   // ---------- Controles ----------
   addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith("Arrow")) e.preventDefault(); });
   addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
-  cv.addEventListener("pointerdown", e => { pointer = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); $("hint").hidden = true; });
+  // mouse: segurar o clique leva a viatura até o ponteiro (no celular, quem dirige são os botões)
+  cv.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch") return;
+    pointer = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); $("hint").hidden = true;
+  });
+  // botões do controle: cada dedo segura um botão, dá para virar e acelerar ao mesmo tempo
+  document.querySelectorAll(".pad button").forEach(b => {
+    const k = b.dataset.key;
+    const on = e => { e.preventDefault(); keys[k] = true; b.classList.add("on"); try { b.setPointerCapture(e.pointerId); } catch (_) {} };
+    const off = () => { keys[k] = false; b.classList.remove("on"); };
+    b.addEventListener("pointerdown", on);
+    b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("lostpointercapture", off);
+    b.addEventListener("contextmenu", e => e.preventDefault());
+  });
+  const temToque = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  const mostrarPad = v => { $("padL").hidden = $("padR").hidden = !(v && temToque); };
   cv.addEventListener("pointermove", e => { if (pointer) pointer = { x: e.clientX, y: e.clientY }; });
   const solta = () => (pointer = null);
   cv.addEventListener("pointerup", solta); cv.addEventListener("pointercancel", solta);
@@ -621,7 +679,7 @@
     else car.v -= car.v * Math.min(1, 1.6 * dt);
     car.v = Math.max(-140, Math.min(max, car.v));
 
-    const fator = Math.min(1, Math.abs(car.v) / 110) * Math.sign(car.v || 1);
+    const fator = Math.min(1, Math.abs(car.v) / 80) * Math.sign(car.v || 1);
     car.a += giro * 3.1 * fator * dt;
 
     const nx = car.x + Math.cos(car.a) * car.v * dt, ny = car.y + Math.sin(car.a) * car.v * dt;
@@ -633,7 +691,7 @@
     const b = bairroEm(car.x, car.y);
     if (b !== ultimoBairro) { if (ultimoBairro && b !== "Recife") toast(b, 1200); ultimoBairro = b; }
 
-    if (atual && Math.hypot(atual.x - car.x, atual.y - car.y) < 60) abrirOcorrencia();
+    if (atual && Math.hypot(atual.x - car.x, atual.y - car.y) < 70) abrirOcorrencia();
   }
 
   // ---------- Desenho ----------
