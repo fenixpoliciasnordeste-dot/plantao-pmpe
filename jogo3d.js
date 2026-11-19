@@ -565,7 +565,7 @@
       };
       if (olha(car, 70, 26) || Math.hypot(car.x - c.x, car.y - c.y) < 40) bloqueado = true;
       if (!bloqueado && c.fantasma <= 0) for (const o of transito) if (o !== c && olha(o, 58, 20)) { bloqueado = true; break; }
-      if (!bloqueado) for (const p of pedestres) if (olha(p, 45, 16)) { bloqueado = true; break; }
+      if (!bloqueado) for (const p of pedestres.concat(pessoasCena)) if (olha(p, 45, 16)) { bloqueado = true; break; }
       c.espera = bloqueado ? c.espera + dt : 0;
       if (c.espera > 2.5) { c.fantasma = 1.5; c.espera = 0; } // destrava cruzamento entupido (só entre carros)
       c.fantasma -= dt;
@@ -597,7 +597,126 @@
   function carregarPessoas() {
     if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return Promise.resolve();
     const loader = new THREE.GLTFLoader();
-    return Promise.all(PESSOAS.map(n => new Promise(res => loader.load(`modelos/pessoas/${n}.glb?v=1`, g => { gltfPessoas[n] = g; res(); }, undefined, () => res()))));
+    return Promise.all(PESSOAS.concat(["character-soldier"]).map(n => new Promise(res => loader.load(`modelos/pessoas/${n}.glb?v=1`, g => { gltfPessoas[n] = g; res(); }, undefined, () => res()))));
+  }
+
+  // Um personagem animado pronto para a cena (clone com esqueleto próprio)
+  function montarPersonagem(g, altura) {
+    const obj = THREE.SkeletonUtils.clone(g.scene);
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      const m = o.material, mat = new THREE.MeshLambertMaterial({ map: m.map || null, skinning: !!o.isSkinnedMesh });
+      if (m.color) mat.color.copy(m.color);
+      if (mat.map) mat.map.encoding = THREE.LinearEncoding;
+      o.material = mat; o.castShadow = true; o.frustumCulled = false;
+    });
+    const cx = new THREE.Box3().setFromObject(obj), alt = cx.max.y - cx.min.y || 1;
+    obj.scale.setScalar(altura / alt);
+    const mixer = new THREE.AnimationMixer(obj);
+    let atualAc = null;
+    const acao = nome => {
+      const clip = g.animations.find(a => a.name === nome) || g.animations.find(a => a.name === "idle");
+      if (!clip) return;
+      const ac = mixer.clipAction(clip);
+      if (ac === atualAc) return;
+      ac.reset().play();
+      if (atualAc) ac.crossFadeFrom(atualAc, 0.25, false);
+      atualAc = ac;
+    };
+    return { obj, mixer, acao, x: 0, y: 0 };
+  }
+  const olharPara = (p, x, y) => { p.obj.rotation.y = -Math.atan2(y - p.y, x - p.x) + Math.PI / 2; };
+  const colocar = (p, x, y) => { p.x = x; p.y = y; p.obj.position.set(x, 0, y); };
+
+  // ---------- Abordagem: o policial desce da viatura e vai até o envolvido ----------
+  let policial = null, envolvido = null, cena = null;
+  const envolvidos = {};
+  const pessoasCena = []; // o trânsito também para para eles
+  function prepararAbordagem() {
+    if (gltfPessoas["character-soldier"]) {
+      policial = montarPersonagem(gltfPessoas["character-soldier"], 18);
+      // farda azul de PM: troca só os tons de verde da textura por azul-marinho
+      policial.obj.traverse(o => {
+        if (!o.isMesh || !o.material.map || !o.material.map.image) return;
+        const img = o.material.map.image, c = document.createElement("canvas");
+        c.width = img.width; c.height = img.height;
+        const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height), px = d.data;
+        for (let i = 0; i < px.length; i += 4) {
+          const r = px[i], gr = px[i + 1], b = px[i + 2];
+          if (gr > r * 1.05 && gr > b * 1.15) { // verde/oliva
+            const l = (r + gr + b) / 3;
+            px[i] = l * 0.35; px[i + 1] = l * 0.5; px[i + 2] = Math.min(255, l * 1.25);
+          }
+        }
+        g.putImageData(d, 0, 0);
+        const t = new THREE.CanvasTexture(c);
+        t.flipY = o.material.map.flipY; t.encoding = THREE.LinearEncoding;
+        o.material.map = t; o.material.needsUpdate = true;
+      });
+      policial.obj.visible = false; scene.add(policial.obj);
+    }
+  }
+  function posicionarEnvolvido(q) {
+    Object.values(envolvidos).forEach(e => (e.obj.visible = false));
+    envolvido = null;
+    const nomes = PESSOAS.filter(n => gltfPessoas[n]);
+    if (!nomes.length) return;
+    const nome = nomes[idx % nomes.length];
+    if (!envolvidos[nome]) { envolvidos[nome] = montarPersonagem(gltfPessoas[nome], 17); scene.add(envolvidos[nome].obj); }
+    envolvido = envolvidos[nome];
+    // fica na calçada ao lado do ponto da ocorrência, olhando para a rua
+    const naX = q.x % STEP === 0, naY = q.y % STEP === 0;
+    const ox = naX ? 52 : 0, oy = naY ? 52 : 0;
+    const sx = q.x + ox > LAND_W + 150 ? -1 : 1, sy = q.y + oy > WORLD_H - 60 ? -1 : 1;
+    colocar(envolvido, q.x + ox * sx, q.y + oy * sy);
+    olharPara(envolvido, q.x, q.y);
+    envolvido.acao("idle");
+    envolvido.obj.visible = true;
+  }
+  function chegarNaOcorrencia() {
+    const seg = (performance.now() - inicioOcorrencia) / 1000;
+    atual.bonus = seg < 25 ? 50 : seg < 40 ? 25 : 0;
+    pausado = true; car.v = 0;
+    Object.keys(keys).forEach(k => (keys[k] = false));
+    document.querySelectorAll(".pad button.on").forEach(b => b.classList.remove("on"));
+    if (!policial || !envolvido) { abrirOcorrencia(); return; }
+    // sai pela porta do motorista (lado esquerdo) e anda até perto do envolvido
+    const lx = Math.cos(car.a - Math.PI / 2), ly = Math.sin(car.a - Math.PI / 2);
+    const sx = car.x + lx * 22, sy = car.y + ly * 22;
+    const d = Math.hypot(envolvido.x - sx, envolvido.y - sy) || 1;
+    const para = { x: envolvido.x - (envolvido.x - sx) / d * 15, y: envolvido.y - (envolvido.y - sy) / d * 15 };
+    colocar(policial, sx, sy);
+    olharPara(policial, para.x, para.y);
+    policial.acao("walk");
+    policial.obj.visible = true;
+    pessoasCena.length = 0; pessoasCena.push(policial, envolvido);
+    mostrarPad(false); marcador.visible = false; gps.visible = false;
+    somSirene();
+    cena = { fase: "andando", t: 0, para };
+  }
+  function atualizarCena(dt) {
+    if (envolvido && envolvido.obj.visible) envolvido.mixer.update(dt);
+    if (!cena || !policial) return;
+    policial.mixer.update(dt);
+    cena.t += dt;
+    if (cena.fase === "andando") {
+      const dx = cena.para.x - policial.x, dy = cena.para.y - policial.y, d = Math.hypot(dx, dy), passo = 58 * dt;
+      if (d <= passo || cena.t > 4) {
+        colocar(policial, cena.para.x, cena.para.y);
+        olharPara(policial, envolvido.x, envolvido.y); olharPara(envolvido, policial.x, policial.y);
+        policial.acao("interact-right"); envolvido.acao("emote-no");
+        cena.fase = "conversa"; cena.t = 0;
+      } else colocar(policial, policial.x + dx / d * passo, policial.y + dy / d * passo);
+    } else if (cena.fase === "conversa" && cena.t > 0.9) {
+      cena.fase = "pergunta";
+      policial.acao("idle"); envolvido.acao("idle");
+      abrirOcorrencia();
+    }
+  }
+  function encerrarCena() {
+    if (policial) policial.obj.visible = false;
+    cena = null; pessoasCena.length = 0;
   }
   function caminhoQuarteirao(i, j) {
     const x0 = i * STEP + 51, y0 = j * STEP + 51, x1 = (i + 1) * STEP - 51, y1 = (j + 1) * STEP - 51;
@@ -760,6 +879,7 @@
   const mostrarPad = v => { $("padL").hidden = $("padR").hidden = !(v && temToque); };
 
   function iniciar() {
+    encerrarCena();
     fila = montarFila(); idx = 0; xp = 0; acertos = 0; historico = [];
     car.x = 1200; car.y = 1200; car.a = -Math.PI / 2; car.v = 0;
     inicio = performance.now();
@@ -781,6 +901,7 @@
     rotulo = textoSprite(atual.tipo, { px: 40, altura: 20 });
     rotulo.position.y = 112; marcador.add(rotulo);
     marcador.visible = true;
+    posicionarEnvolvido(atual);
     somSirene();
     toast(`Nova ocorrência<small>${atual.tipo} · ${atual.bairro}</small>`, 2200);
   }
@@ -791,8 +912,7 @@
     document.querySelectorAll(".pad button.on").forEach(b => b.classList.remove("on"));
     const q = atual;
     travaAte = performance.now() + 800;
-    const seg = (performance.now() - inicioOcorrencia) / 1000;
-    q.bonus = seg < 25 ? 50 : seg < 40 ? 25 : 0;
+    if (q.bonus === undefined) { const seg = (performance.now() - inicioOcorrencia) / 1000; q.bonus = seg < 25 ? 50 : seg < 40 ? 25 : 0; }
     $("qTag").textContent = `Ocorrência ${idx + 1}/${fila.length}`;
     $("qWhere").textContent = q.bairro;
     $("qTitle").textContent = q.tipo;
@@ -839,6 +959,7 @@
 
   function seguir() {
     $("sQuestion").classList.remove("on");
+    encerrarCena(); mostrarPad(true);
     idx++;
     if (idx === LEAD_DEPOIS_DE && !leadSalvo()) { $("sLead").classList.add("on"); return; }
     proximaOcorrencia();
@@ -860,6 +981,7 @@
 
   function fim() {
     pausado = true; atual = null; marcador.visible = false;
+    encerrarCena(); Object.values(envolvidos).forEach(e => (e.obj.visible = false));
     $("hud").hidden = true; $("mute").hidden = true; mostrarPad(false);
     const r = rankDe(xp), erros = fila.length - acertos;
     const min = Math.max(1, Math.round((performance.now() - inicio) / 60000));
@@ -918,6 +1040,7 @@
     try { aplicarModelos(); } catch (e) { console.warn(e); }
     try { criarTransito(); } catch (e) { console.warn(e); }
     try { criarPedestres(); } catch (e) { console.warn(e); }
+    try { prepararAbordagem(); } catch (e) { console.warn(e); }
     liberar();
   });
   setTimeout(liberar, 10000);
@@ -965,7 +1088,7 @@
     const b = bairroEm(car.x, car.y);
     if (b !== ultimoBairro) { if (ultimoBairro && b !== "Recife") toast(b, 1200); ultimoBairro = b; }
 
-    if (atual && Math.hypot(atual.x - car.x, atual.y - car.y) < 70) abrirOcorrencia();
+    if (atual && Math.hypot(atual.x - car.x, atual.y - car.y) < 70) chegarNaOcorrencia();
   }
 
   // ---------- Câmera e desenho ----------
@@ -983,6 +1106,29 @@
   const olhar = new THREE.Vector3();
   let camAng = car.a;
   function atualizarCamera(dt) {
+    if (cena && envolvido) {
+      // câmera de cena: de lado, enquadrando viatura, policial e envolvido
+      const mx = (car.x + envolvido.x) / 2, my = (car.y + envolvido.y) / 2;
+      let px = -(envolvido.y - car.y), py = envolvido.x - car.x; const l = Math.hypot(px, py) || 1; px /= l; py /= l;
+      if (atual && (px * (atual.x - envolvido.x) + py * (atual.y - envolvido.y)) < 0) { px = -px; py = -py; }
+      if (camera.aspect < 1) {
+        // celular em pé: por cima do ombro, atrás da viatura olhando para o envolvido
+        const ux = envolvido.x - car.x, uy = envolvido.y - car.y, ul = Math.hypot(ux, uy) || 1;
+        const pos = new THREE.Vector3(car.x - ux / ul * 70 + px * 28, 58, car.y - uy / ul * 70 + py * 28);
+        camPos.lerp(pos, Math.min(1, dt * 3));
+        camera.position.copy(camPos);
+        camera.lookAt((car.x + envolvido.x * 2) / 3, 8, (car.y + envolvido.y * 2) / 3);
+        return;
+      }
+      // tela deitada: de lado, com distância para caber todo mundo
+      const meioH = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+      const vao = Math.hypot(envolvido.x - car.x, envolvido.y - car.y) / 2 + 30;
+      const dist = Math.max(95, vao / Math.tan(meioH));
+      camPos.lerp(new THREE.Vector3(mx + px * dist, 30 + dist * 0.4, my + py * dist), Math.min(1, dt * 3));
+      camera.position.copy(camPos);
+      camera.lookAt(mx, 10, my);
+      return;
+    }
     // a câmera segue a direção da viatura com um pouco de atraso, como nos jogos de carro
     const alvoAng = car.v < -20 ? car.a : car.a;
     let d = alvoAng - camAng; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
@@ -1007,7 +1153,7 @@
       anel.scale.setScalar(1 + p * 0.25);
       exclamacao.position.y = 70 + Math.sin(t / 300) * 6;
       const dx = atual.x - car.x, dz = atual.y - car.y, dist = Math.hypot(dx, dz);
-      gps.visible = dist > 140;
+      gps.visible = dist > 140 && !cena;
       gps.position.set(car.x, 36 + Math.sin(t / 250) * 2, car.y);
       gps.rotation.y = -Math.atan2(dz, dx);
       const metros = Math.round(dist / 3) * 3;
@@ -1064,7 +1210,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (!pausado) atualizar(dt);
-    atualizarTransito(dt); atualizarPedestres(dt); // a cidade segue viva até com a pergunta aberta
+    atualizarTransito(dt); atualizarPedestres(dt); atualizarCena(dt); // a cidade segue viva até com a pergunta aberta
     desenhar(t, dt);
     ajustarQualidade(dt);
     requestAnimationFrame(loop);
@@ -1072,5 +1218,5 @@
 
   redimensionar();
   requestAnimationFrame(loop);
-  window.__plantao = { transito, pedestres, car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
+  window.__plantao = { get cena() { return cena; }, transito, pedestres, car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
 })();
