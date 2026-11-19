@@ -181,7 +181,7 @@
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !temToque, powerPreference: "high-performance" });
     if (!renderer.getContext()) throw new Error("sem contexto");
   } catch (e) { ir2d("webgl"); return; }
-  let qualidade = Math.min(window.devicePixelRatio || 1, temToque ? 1.5 : 2);
+  let qualidade = Math.min(window.devicePixelRatio || 1, temToque ? 1.25 : 2);
   renderer.setPixelRatio(qualidade);
 
   // Fim de tarde no Recife: céu degradê, sol baixo e quente, sombras compridas
@@ -475,7 +475,7 @@
       vagas.forEach(v => {
         if (r() > 0.42) return;
         const lado = r() < 0.5 ? -1 : 1, desl = (r() - 0.5) * 80;
-        const x = v.vert ? v.x + lado * 30 : v.x + desl, y = v.vert ? v.y + desl : v.y + lado * 30;
+        const x = v.vert ? v.x + lado * 38 : v.x + desl, y = v.vert ? v.y + desl : v.y + lado * 38; // encostado no meio-fio
         if (!longe(x, y)) return;
         const tipo = tipos[Math.floor(r() * tipos.length)], m = mod[tipo];
         const ang = v.vert ? (lado > 0 ? Math.PI / 2 : -Math.PI / 2) : (lado > 0 ? 0 : Math.PI);
@@ -489,6 +489,173 @@
     if (mod.ambulancia) {
       espalhar(mod.ambulancia, [pose(mod.ambulancia, 1650, 330, 0, 46 / Math.max(mod.ambulancia.tam.x, mod.ambulancia.tam.z), true)]);
       solidos.push([1627, 317, 46, 26]);
+    }
+  }
+
+  // ---------- Cidade viva: trânsito e pedestres ----------
+  const moveis = [];   // { x, y, r } — o que se move e a viatura não atravessa
+  const transito = []; // carros andando
+  const pedestres = [];
+  const FAIXA = 14;    // distância do centro da rua até o meio da faixa (mão direita)
+  const N_CARROS = temToque ? 12 : 18, N_PEDESTRES = temToque ? 14 : 24;
+  const VIS = 650;     // longe disso, pedestre fica parado e escondido (economiza o celular)
+
+  // ruas: cruzamentos de x = 300..2100 e y = 300..1500 (as bordas do mapa ficam de fora)
+  const NOS_X = [1, 2, 3, 4, 5, 6, 7], NOS_Y = [1, 2, 3, 4, 5];
+  const no = (i, j) => ({ x: i * STEP, y: j * STEP });
+  const vizinhos = ([i, j]) => [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]].filter(([a, b]) => NOS_X.includes(a) && NOS_Y.includes(b));
+  const dir = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l }; };
+  const direita = d => ({ x: -d.y, y: d.x }); // lado direito de quem vai na direção d (y para baixo)
+
+  // monta o caminho de um carro: chega no cruzamento C vindo de P e sai para N, fazendo a curva
+  function trecho(P, C, N) {
+    const p = no(...P), c = no(...C), n = no(...N);
+    const di = dir(p, c), dO = dir(c, n), ri = direita(di), ro = direita(dO);
+    const A = { x: c.x - di.x * 52 + ri.x * FAIXA, y: c.y - di.y * 52 + ri.y * FAIXA };
+    const E = { x: c.x + dO.x * 52 + ro.x * FAIXA, y: c.y + dO.y * 52 + ro.y * FAIXA };
+    let Q;
+    if (Math.abs(di.x * dO.x + di.y * dO.y) > 0.9) Q = di.x * dO.x + di.y * dO.y > 0 ? { x: (A.x + E.x) / 2, y: (A.y + E.y) / 2 } : { x: c.x + di.x * 40, y: c.y + di.y * 40 };
+    else Q = Math.abs(di.x) > 0.5 ? { x: E.x, y: A.y } : { x: A.x, y: E.y };
+    const pts = [A];
+    for (let k = 1; k <= 6; k++) { const t = k / 6, u = 1 - t; pts.push({ x: u * u * A.x + 2 * u * t * Q.x + t * t * E.x, y: u * u * A.y + 2 * u * t * Q.y + t * t * E.y }); }
+    return pts;
+  }
+  function proximoTrecho(c) {
+    const ops = vizinhos(c.para).filter(([a, b]) => !(a === c.de[0] && b === c.de[1]));
+    const N = ops.length ? ops[Math.floor(Math.random() * ops.length)] : c.de;
+    c.pontos.push(...trecho(c.de, c.para, N));
+    c.de = c.para; c.para = N;
+  }
+
+  function criarTransito() {
+    const tipos = ["sedan", "taxi", "suv", "hatch", "van", "taxi"].filter(k => mod[k]);
+    if (!tipos.length) return;
+    const porTipo = {};
+    for (let k = 0; k < N_CARROS; k++) {
+      // começa no meio de uma rua qualquer, longe da viatura
+      let de, para, tent = 0;
+      do {
+        de = [NOS_X[Math.floor(Math.random() * NOS_X.length)], NOS_Y[Math.floor(Math.random() * NOS_Y.length)]];
+        const vs = vizinhos(de); para = vs[Math.floor(Math.random() * vs.length)];
+      } while (Math.hypot(no(...de).x - 1200, no(...de).y - 1200) < 350 && ++tent < 20);
+      const a = no(...de), b = no(...para), d = dir(a, b), r = direita(d);
+      const tipo = tipos[k % tipos.length];
+      const c = { tipo, de, para, pontos: [], x: (a.x + b.x) / 2 + r.x * FAIXA, y: (a.y + b.y) / 2 + r.y * FAIXA,
+        a: Math.atan2(d.y, d.x), v: 0, vmax: 110 + Math.random() * 70, espera: 0, fantasma: 0, r: 18 };
+      proximoTrecho(c);
+      transito.push(c); moveis.push(c);
+      (porTipo[tipo] = porTipo[tipo] || []).push(c);
+    }
+    // um InstancedMesh por peça de cada modelo: poucas chamadas de desenho mesmo com muitos carros
+    Object.entries(porTipo).forEach(([tipo, lista]) => {
+      const m = mod[tipo], esc = 34 / Math.max(m.tam.x, m.tam.z);
+      const ims = m.partes.map(p => { const im = new THREE.InstancedMesh(p.geo, p.mat, lista.length); im.castShadow = true; im.frustumCulled = false; scene.add(im); return im; });
+      lista.forEach((c, i) => { c.desenho = { ims, i, m, esc }; });
+    });
+  }
+
+  function atualizarTransito(dt) {
+    for (const c of transito) {
+      // olha para frente: viatura (sempre) e outros carros (a não ser que esteja destravando)
+      const hx = Math.cos(c.a), hy = Math.sin(c.a);
+      let bloqueado = false;
+      const olha = (o, dist, larg) => {
+        const rx = o.x - c.x, ry = o.y - c.y, fr = rx * hx + ry * hy, lat = Math.abs(rx * hy - ry * hx);
+        return fr > 0 && fr < dist && lat < larg;
+      };
+      if (olha(car, 70, 26) || Math.hypot(car.x - c.x, car.y - c.y) < 40) bloqueado = true;
+      if (!bloqueado && c.fantasma <= 0) for (const o of transito) if (o !== c && olha(o, 58, 20)) { bloqueado = true; break; }
+      if (!bloqueado) for (const p of pedestres) if (olha(p, 45, 16)) { bloqueado = true; break; }
+      c.espera = bloqueado ? c.espera + dt : 0;
+      if (c.espera > 2.5) { c.fantasma = 1.5; c.espera = 0; } // destrava cruzamento entupido (só entre carros)
+      c.fantasma -= dt;
+      const alvoV = bloqueado ? 0 : c.vmax;
+      c.v += Math.sign(alvoV - c.v) * Math.min(Math.abs(alvoV - c.v), (bloqueado ? 420 : 160) * dt);
+      // segue os pontos do caminho
+      let passo = c.v * dt;
+      while (passo > 0 && c.pontos.length) {
+        const p = c.pontos[0], dx = p.x - c.x, dy = p.y - c.y, d = Math.hypot(dx, dy);
+        if (d <= passo) { c.x = p.x; c.y = p.y; passo -= d; c.pontos.shift(); if (c.pontos.length < 3) proximoTrecho(c); }
+        else {
+          c.x += dx / d * passo; c.y += dy / d * passo; passo = 0;
+          let da = Math.atan2(dy, dx) - c.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+          c.a += da * Math.min(1, dt * 10);
+        }
+      }
+      if (!c.pontos.length) proximoTrecho(c);
+      const { ims, i, m, esc } = c.desenho;
+      const mx = pose(m, c.x, c.y, c.a, esc, true);
+      ims.forEach(im => im.setMatrixAt(i, mx));
+    }
+    const vistos = new Set();
+    for (const c of transito) if (!vistos.has(c.desenho.ims)) { vistos.add(c.desenho.ims); c.desenho.ims.forEach(im => (im.instanceMatrix.needsUpdate = true)); }
+  }
+
+  // pedestres: dão a volta no quarteirão pela calçada, ou andam na orla
+  const PESSOAS = ["character-male-a", "character-male-c", "character-male-e", "character-female-a", "character-female-c", "character-female-e"];
+  const gltfPessoas = {};
+  function carregarPessoas() {
+    if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return Promise.resolve();
+    const loader = new THREE.GLTFLoader();
+    return Promise.all(PESSOAS.map(n => new Promise(res => loader.load(`modelos/pessoas/${n}.glb?v=1`, g => { gltfPessoas[n] = g; res(); }, undefined, () => res()))));
+  }
+  function caminhoQuarteirao(i, j) {
+    const x0 = i * STEP + 51, y0 = j * STEP + 51, x1 = (i + 1) * STEP - 51, y1 = (j + 1) * STEP - 51;
+    return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  }
+  function criarPedestres() {
+    const nomes = PESSOAS.filter(n => gltfPessoas[n]);
+    if (!nomes.length) return;
+    const orla = [{ x: LAND_W + 85, y: 60 }, { x: LAND_W + 85, y: WORLD_H - 60 }];
+    for (let k = 0; k < N_PEDESTRES; k++) {
+      const g = gltfPessoas[nomes[k % nomes.length]];
+      const obj = THREE.SkeletonUtils.clone(g.scene);
+      obj.traverse(o => {
+        if (!o.isMesh) return;
+        const m = o.material, mat = new THREE.MeshLambertMaterial({ map: m.map || null, skinning: !!o.isSkinnedMesh });
+        if (m.color) mat.color.copy(m.color);
+        if (mat.map) mat.map.encoding = THREE.LinearEncoding;
+        o.material = mat; o.castShadow = true; o.frustumCulled = false;
+      });
+      const caixaP = new THREE.Box3().setFromObject(obj), alt = caixaP.max.y - caixaP.min.y || 1;
+      obj.scale.setScalar(17 / alt);
+      const mixer = new THREE.AnimationMixer(obj);
+      const clip = g.animations.find(a => a.name === "walk") || g.animations[0];
+      if (clip) { const ac = mixer.clipAction(clip); ac.play(); ac.time = Math.random() * clip.duration; }
+      const naOrla = k % 4 === 0;
+      let rota;
+      if (naOrla) rota = orla;
+      else {
+        const i = Math.floor(Math.random() * COLS), j = Math.floor(Math.random() * ROWS);
+        rota = caminhoQuarteirao(i, j);
+      }
+      const p = { obj, mixer, rota, seg: Math.floor(Math.random() * rota.length), t: Math.random(), v: 16 + Math.random() * 10,
+        sentido: Math.random() < 0.5 ? 1 : -1, x: 0, y: 0, a: 0, r: 7, parado: 0 };
+      if (naOrla) { p.seg = 0; p.sentido = 1; }
+      posicionarPedestre(p, 0);
+      scene.add(obj); pedestres.push(p); moveis.push(p);
+    }
+  }
+  function posicionarPedestre(p, dt) {
+    const n = p.rota.length, ida = p.rota.length === 2;
+    const A = p.rota[p.seg % n], B = ida ? p.rota[(p.seg + 1) % n] : p.rota[(p.seg + (p.sentido > 0 ? 1 : n - 1)) % n];
+    const L = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+    p.t += (p.v * dt) / L;
+    if (p.t >= 1) { p.t = 0; p.seg = ida ? (p.seg + 1) % 2 : (p.seg + (p.sentido > 0 ? 1 : n - 1)) % n; return posicionarPedestre(p, 0); }
+    p.x = A.x + (B.x - A.x) * p.t; p.y = A.y + (B.y - A.y) * p.t;
+    p.a = Math.atan2(B.y - A.y, B.x - A.x);
+    p.obj.position.set(p.x, 0, p.y);
+    p.obj.rotation.y = -p.a + Math.PI / 2; // os personagens olham para +Z
+  }
+  function atualizarPedestres(dt) {
+    for (const p of pedestres) {
+      const perto = Math.abs(p.x - car.x) < VIS && Math.abs(p.y - car.y) < VIS;
+      p.obj.visible = perto;
+      if (!perto) continue;
+      // para se a viatura estiver encostando nele
+      const parar = Math.hypot(car.x - p.x, car.y - p.y) < 34;
+      if (!parar) posicionarPedestre(p, dt);
+      p.mixer.update(parar ? 0 : dt * (p.v / 20));
     }
   }
 
@@ -747,7 +914,12 @@
   $("btnStart").disabled = true; $("btnStart").textContent = "Carregando a cidade...";
   let liberado = false;
   const liberar = () => { if (liberado) return; liberado = true; $("btnStart").disabled = false; $("btnStart").textContent = "Iniciar plantão"; };
-  carregarModelos().then(() => { try { aplicarModelos(); } catch (e) { console.warn(e); } liberar(); });
+  Promise.all([carregarModelos(), carregarPessoas()]).then(() => {
+    try { aplicarModelos(); } catch (e) { console.warn(e); }
+    try { criarTransito(); } catch (e) { console.warn(e); }
+    try { criarPedestres(); } catch (e) { console.warn(e); }
+    liberar();
+  });
   setTimeout(liberar, 10000);
   $("btnAgain").onclick = iniciar;
   $("btnNext").onclick = seguir;
@@ -763,6 +935,7 @@
       const cx = Math.max(bx, Math.min(x, bx + bw)), cy = Math.max(by, Math.min(y, by + bh));
       if ((x - cx) ** 2 + (y - cy) ** 2 < R * R) return true;
     }
+    for (const o of moveis) if ((x - o.x) ** 2 + (y - o.y) ** 2 < (R + o.r) ** 2) return true;
     return false;
   };
   const naGrama = (x, y) => parques.some(([px, py, pw, ph]) => x > px && x < px + pw && y > py && y < py + ph) || x > LAND_W + 45;
@@ -869,11 +1042,11 @@
   function ajustarQualidade(dt) {
     if (QUALIDADE_FIXA || pausado || (qualidade <= 0.75 && !renderer.shadowMap.enabled)) return;
     amostras++; soma += dt;
-    if (amostras < 90) return;
+    if (amostras < 60) return;
     const media = soma / amostras; amostras = 0; soma = 0;
     if (media <= 1 / 40) return;
     if (qualidade > 1) {
-      qualidade = Math.max(1, qualidade - 0.5);
+      qualidade = 1;
       renderer.setPixelRatio(qualidade);
       redimensionar();
     } else if (renderer.shadowMap.enabled) {
@@ -891,6 +1064,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (!pausado) atualizar(dt);
+    atualizarTransito(dt); atualizarPedestres(dt); // a cidade segue viva até com a pergunta aberta
     desenhar(t, dt);
     ajustarQualidade(dt);
     requestAnimationFrame(loop);
@@ -898,5 +1072,5 @@
 
   redimensionar();
   requestAnimationFrame(loop);
-  window.__plantao = { car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
+  window.__plantao = { transito, pedestres, car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
 })();
