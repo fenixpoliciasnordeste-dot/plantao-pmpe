@@ -83,6 +83,24 @@
   .radio b { display: block; color: #f2b632; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
   .radio b::before { content: "📻 "; }
   @media (max-width: 560px) { .radio { bottom: auto; top: calc(env(safe-area-inset-top) + 150px); } }
+  /* troca de tiro */
+  .confronto { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top) + 92px);
+    width: min(92vw, 440px); display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; z-index: 6; pointer-events: none;
+    background: rgba(11,24,48,.88); border: 1px solid rgba(229,72,77,.6); border-radius: 12px; padding: 8px 12px; }
+  .confronto .vida span { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #fff; }
+  .confronto .vida .bar { height: 9px; margin-top: 3px; }
+  .confronto .vida .bar i { background: #2fb36d; width: 100%; transition: width .15s; }
+  .confronto .suspeito .bar i { background: #e5484d; }
+  .confronto .dica-tiro { grid-column: 1 / -1; font-size: 11px; color: var(--muted); text-align: center; }
+  body.toque .confronto { top: calc(env(safe-area-inset-top) + 240px); } /* abaixo da legenda do rádio */
+  #padTiro button.tiro { width: 84px; height: 84px; font-size: 30px; flex-direction: column; }
+  #padTiro #btnAtirar { background: rgba(229,72,77,.75); border-color: #ffb3b5; }
+  #padTiro #btnAtirar.on { background: #e5484d; }
+  #padTiro #btnAbrigar.on { background: rgba(47,179,109,.85); border-color: #9ff0c4; }
+  .dano { position: fixed; inset: 0; pointer-events: none; z-index: 7; opacity: 0;
+    background: radial-gradient(ellipse at center, rgba(229,72,77,0) 45%, rgba(229,72,77,.55) 100%); }
+  .dano.on { animation: dano .45s ease-out; }
+  @keyframes dano { 0% { opacity: 1; } 100% { opacity: 0; } }
   .hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 72px);
     font-size: 12px; color: var(--muted); background: rgba(11,24,48,.8); padding: 6px 12px; border-radius: 20px;
     pointer-events: none; white-space: nowrap; }
@@ -158,6 +176,16 @@
 <button class="mute" id="mute" hidden aria-label="Som">🔊</button>
 <button class="sirene" id="sireneBtn" hidden aria-label="Ligar ou desligar a sirene">🚨</button>
 <div class="radio" id="radio" hidden><b></b><span></span></div>
+<div class="confronto" id="confronto" hidden>
+  <div class="vida"><span>VOCÊ</span><div class="bar"><i id="vidaP"></i></div></div>
+  <div class="vida suspeito"><span>SUSPEITO</span><div class="bar"><i id="vidaB"></i></div></div>
+  <div class="dica-tiro">Abrigue-se atrás da viatura · atire quando o suspeito aparecer</div>
+</div>
+<div class="pad right" id="padTiro" hidden>
+  <button class="tiro" id="btnAtirar" aria-label="Atirar">🔫<small>ATIRAR</small></button>
+  <button class="tiro" id="btnAbrigar" aria-label="Abrigar">🛡️<small>ABRIGAR</small></button>
+</div>
+<div class="dano" id="dano"></div>
 <div class="pad left" id="padL" hidden>
   <button data-key="arrowleft" aria-label="Virar à esquerda">◀</button>
   <button data-key="arrowright" aria-label="Virar à direita">▶</button>
@@ -176,7 +204,8 @@
     <p>Você está de serviço no Recife, agora em 3D. Patrulhe com a viatura, atenda as ocorrências e resolva cada uma com o que cai na prova.</p>
     <ul class="how">
       <li><b>Celular:</b> ◀ ▶ do lado esquerdo para virar, ▲ ▼ do lado direito para frente e ré.</li>
-      <li><b>Computador:</b> setas ou W A S D. Tecla H liga e desliga a sirene.</li>
+      <li><b>Computador:</b> setas ou W A S D. Tecla H liga e desliga a sirene. Na troca de tiro: Espaço atira, C abriga.</li>
+      <li><b>Alto risco:</b> acertou a abordagem, o suspeito se rende. Errou, é troca de tiro.</li>
       <li>Siga a seta até a ocorrência. Acertou, ganha XP. Chegou rápido, ganha bônus.</li>
     </ul>
     <div class="ranks"><div class="on">Soldado</div><div>Cabo · 400 XP</div><div>Sargento · 900 XP</div></div>
@@ -234,10 +263,10 @@
   </div>
 </div>
 
-<script src="questoes.js?v=7"></script>
+<script src="questoes.js?v=9"></script>
 <script src="three.min.js?v=r128"></script>
 <script src="GLTFLoader.js?v=r128"></script>
 <script src="SkeletonUtils.js?v=r128"></script>
-<script src="jogo3d.js?v=16"></script>
+<script src="jogo3d.js?v=20"></script>
 </body>
 </html>

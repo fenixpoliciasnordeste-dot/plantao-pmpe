@@ -1,8 +1,8 @@
 // Plantão PMPE — banco de ocorrências e questões
 // RASCUNHO: o Rodolpho precisa revisar antes de mostrar para os alunos.
 //
-// A cada plantão o jogo sorteia 10 questões: 6 de RLM e 4 das outras matérias
-// (dá para mudar em index.html: POR_PLANTAO e RLM_POR_PLANTAO).
+// A cada plantão o jogo sorteia 10 questões: 5 de RLM, 2 de alto risco (com bandido armado),
+// 1 de Maria da Penha e 2 das outras matérias (dá para mudar em jogo3d.js: POR_PLANTAO, RLM_POR_PLANTAO e ALTO_RISCO_POR_PLANTAO).
 //
 // Como editar sem mexer no jogo:
 // - area: "RLM", "Direito", "Português", "Informática" ou "História"
@@ -260,7 +260,7 @@ window.QUESTOES = [
     explicacao: "Hierarquia e disciplina são a base da Corporação, e quanto maior o grau, maior a autoridade e a responsabilidade. Dentro do mesmo posto ou graduação, quem define a ordem é a antiguidade, não a idade."
   },
   {
-    area: "Direito", bairro: "Boa Viagem", tipo: "Violência contra a mulher",
+    area: "Direito", tema: "maria-da-penha", bairro: "Boa Viagem", tipo: "Violência contra a mulher",
     narrativa: "Em Boa Viagem, uma jovem relata que o ex-namorado, com quem namorou dois anos sem nunca morar junto, está com os documentos dela e ameaça não devolver.",
     materia: "Lei Maria da Penha (Lei 11.340/2006)",
     enunciado: "Sobre a aplicação da Lei Maria da Penha nesse caso, é correto afirmar:",
@@ -442,6 +442,265 @@ window.QUESTOES = [
     explicacao: "O Pacto (art. 7º, 7) proíbe prisão por dívida, exceto pelo não pagamento de pensão alimentícia. Por isso a prisão do depositário infiel é ilícita (Súmula Vinculante 25)."
   },
 
+  // ===================== MARIA DA PENHA =====================
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Briga de casal",
+    narrativa: "{local}, vizinhos chamam a guarnição por causa de gritos. A mulher relata xingamentos, empurrões e que o companheiro rasgou os documentos dela.",
+    materia: "Lei Maria da Penha (art. 7º)",
+    enunciado: "Desde a Lei 15.384/2026, quantas formas de violência doméstica e familiar contra a mulher o art. 7º da Lei Maria da Penha prevê?",
+    alternativas: [
+      "Seis: física, psicológica, sexual, patrimonial, moral e vicária.",
+      "Cinco: física, psicológica, sexual, patrimonial e moral.",
+      "Quatro: física, psicológica, sexual e moral.",
+      "Três: física, sexual e patrimonial."
+    ],
+    correta: 0,
+    explicacao: "A Lei 15.384/2026 incluiu a violência vicária no art. 7º. Agora são seis formas: física, psicológica, sexual, patrimonial, moral e vicária. Quem decorou \"cinco formas\" precisa atualizar."
+  },
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Agressor dentro de casa",
+    narrativa: "{local}, numa cidade do interior sem juiz e sem delegado disponível no momento, a guarnição encontra uma mulher em risco atual de morte dentro de casa, com o agressor presente.",
+    materia: "Lei Maria da Penha (art. 12-C)",
+    enunciado: "Segundo o art. 12-C da Lei Maria da Penha, nessa situação o agressor pode ser afastado imediatamente do lar:",
+    alternativas: [
+      "pelo policial, quando o município não for sede de comarca e não houver delegado disponível no momento da denúncia.",
+      "somente pelo juiz, depois de ouvir o Ministério Público.",
+      "somente pelo delegado, em qualquer município.",
+      "por ninguém, porque o afastamento exige processo já instaurado."
+    ],
+    correta: 0,
+    explicacao: "O art. 12-C prevê o afastamento imediato pelo juiz; pelo delegado, quando o município não for sede de comarca; e pelo policial, quando o município não for sede de comarca e não houver delegado disponível no momento da denúncia."
+  },
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Medida protetiva descumprida",
+    narrativa: "{local}, uma mulher liga para o 190: o ex-companheiro, proibido pela Justiça de se aproximar dela, está na porta de casa.",
+    materia: "Lei Maria da Penha (art. 24-A)",
+    enunciado: "Sobre o descumprimento da medida protetiva de urgência, é correto afirmar:",
+    alternativas: [
+      "É crime, e em caso de prisão em flagrante apenas a autoridade judicial pode conceder fiança.",
+      "É só infração administrativa, sem prisão.",
+      "É crime, e o delegado pode conceder fiança na hora.",
+      "Só é crime se houver nova agressão física."
+    ],
+    correta: 0,
+    explicacao: "Descumprir decisão judicial que defere medida protetiva é crime (art. 24-A, incluído pela Lei 13.641/2018). Na prisão em flagrante, só o juiz pode conceder fiança (art. 24-A, § 2º)."
+  },
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Pedido de acordo",
+    narrativa: "{local}, depois de uma agressão doméstica, o agressor pergunta à guarnição se dá para resolver tudo com uma cesta básica no juizado.",
+    materia: "Lei Maria da Penha (arts. 17 e 41)",
+    enunciado: "Sobre os crimes praticados com violência doméstica e familiar contra a mulher, é correto afirmar:",
+    alternativas: [
+      "Não se aplica a Lei 9.099/1995 (Juizados Especiais), e é vedada a pena de cesta básica ou de pagamento isolado de multa.",
+      "Aplica-se a transação penal, como em qualquer crime de menor potencial ofensivo.",
+      "A pena pode ser substituída só por cesta básica.",
+      "O caso vai obrigatoriamente para o Juizado Especial Criminal."
+    ],
+    correta: 0,
+    explicacao: "O art. 41 afasta a Lei 9.099/1995 nesses crimes (Súmula 536 do STJ: sem transação penal nem suspensão condicional do processo). E o art. 17 proíbe cesta básica, prestação pecuniária ou multa isolada."
+  },
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Lesão leve em casa",
+    narrativa: "{local}, uma mulher com hematomas no braço diz que foi agredida pelo marido, mas que não quer \"dar queixa\".",
+    materia: "Violência doméstica (Súmula 542 do STJ)",
+    enunciado: "Nos crimes de lesão corporal resultante de violência doméstica contra a mulher, a ação penal é:",
+    alternativas: [
+      "pública incondicionada, mesmo que a lesão seja leve.",
+      "pública condicionada à representação da vítima.",
+      "privada, dependendo de queixa da vítima.",
+      "pública condicionada à requisição do Ministro da Justiça."
+    ],
+    correta: 0,
+    explicacao: "Pela Súmula 542 do STJ, a ação penal na lesão corporal com violência doméstica contra a mulher é pública incondicionada, mesmo se leve. Não depende da vontade da vítima."
+  },
+  {
+    area: "Direito", tema: "maria-da-penha", tipo: "Medida protetiva urgente",
+    narrativa: "{local}, a vítima pergunta se precisa esperar uma audiência para conseguir a medida protetiva.",
+    materia: "Lei Maria da Penha (art. 19)",
+    enunciado: "Sobre a concessão de medidas protetivas de urgência, é correto afirmar:",
+    alternativas: [
+      "Podem ser concedidas de imediato pelo juiz, independentemente de audiência das partes e de manifestação do Ministério Público.",
+      "Só podem ser concedidas depois de audiência com a vítima e o agressor.",
+      "Dependem sempre de parecer prévio do Ministério Público.",
+      "Só valem depois do trânsito em julgado da sentença."
+    ],
+    correta: 0,
+    explicacao: "O art. 19, § 1º, da Lei Maria da Penha permite ao juiz conceder as medidas de imediato, sem audiência das partes e sem manifestação do Ministério Público, que deve ser comunicado depois."
+  },
+
+  // ===================== DIREITO EM GERAL =====================
+  {
+    area: "Direito", tipo: "Preso sem ordem",
+    narrativa: "{local}, um advogado diz que seu cliente está preso há dias sem flagrante e sem ordem judicial.",
+    materia: "Constituição Federal (art. 5º, LXVIII)",
+    enunciado: "O remédio constitucional para proteger a liberdade de locomoção é o:",
+    alternativas: [
+      "Habeas corpus",
+      "Mandado de segurança",
+      "Habeas data",
+      "Ação popular"
+    ],
+    correta: 0,
+    explicacao: "O habeas corpus protege quem sofre ou está ameaçado de sofrer violência ou coação na liberdade de locomoção, por ilegalidade ou abuso de poder."
+  },
+  {
+    area: "Direito", tipo: "Direitos do preso",
+    narrativa: "{local}, depois de uma prisão em flagrante, o preso pergunta quais são os direitos dele.",
+    materia: "Constituição Federal (art. 5º, LXIII e LXIV)",
+    enunciado: "Segundo a Constituição, o preso tem direito:",
+    alternativas: [
+      "a ser informado de seus direitos, entre eles o de permanecer calado, e à identificação dos responsáveis por sua prisão.",
+      "a escolher qual policial vai conduzi-lo.",
+      "a não ser algemado em nenhuma hipótese.",
+      "a ser solto se pagar fiança, em qualquer crime."
+    ],
+    correta: 0,
+    explicacao: "O art. 5º, LXIII, garante ao preso ser informado de seus direitos, incluindo o de ficar calado, com assistência da família e de advogado. O inciso LXIV garante a identificação dos responsáveis pela prisão."
+  },
+  {
+    area: "Direito", tipo: "Ladrão no muro",
+    narrativa: "{local}, um homem pula o muro de uma casa para furtar, mas é preso pela guarnição antes de pegar qualquer coisa.",
+    materia: "Código Penal (art. 14)",
+    enunciado: "Considerando que a execução já tinha começado, o crime foi:",
+    alternativas: [
+      "tentado, porque não se consumou por circunstâncias alheias à vontade do agente.",
+      "consumado.",
+      "impossível.",
+      "apenas ato preparatório, sem punição."
+    ],
+    correta: 0,
+    explicacao: "Pelo art. 14, II, há tentativa quando, iniciada a execução, o crime não se consuma por circunstâncias alheias à vontade do agente. A pena é reduzida de um a dois terços."
+  },
+  {
+    area: "Direito", tipo: "Furto ou roubo?",
+    narrativa: "{local}, um rapaz arranca o celular da mão de uma senhora com um empurrão e foge.",
+    materia: "Código Penal (arts. 155 e 157)",
+    enunciado: "O que diferencia o roubo do furto é que, no roubo:",
+    alternativas: [
+      "há violência ou grave ameaça contra a pessoa.",
+      "o objeto tem valor alto.",
+      "o crime é cometido à noite.",
+      "o autor é reincidente."
+    ],
+    correta: 0,
+    explicacao: "Furto (art. 155) é subtrair coisa alheia móvel. Roubo (art. 157) é subtrair mediante grave ameaça ou violência à pessoa, ou depois de reduzi-la à impossibilidade de resistência."
+  },
+  {
+    area: "Direito", tipo: "Preso na delegacia",
+    narrativa: "{local}, depois de uma prisão em flagrante, o preso quer saber quando vai ver um juiz.",
+    materia: "Processo Penal (art. 310 do CPP)",
+    enunciado: "Após a prisão em flagrante, o juiz deve promover a audiência de custódia no prazo máximo de:",
+    alternativas: [
+      "24 horas",
+      "48 horas",
+      "72 horas",
+      "5 dias"
+    ],
+    correta: 0,
+    explicacao: "Pelo art. 310 do CPP, o juiz deve promover a audiência de custódia em até 24 horas após a prisão, com o preso, o advogado ou defensor e o Ministério Público."
+  },
+  {
+    area: "Direito", tipo: "Ofensa racista",
+    narrativa: "{local}, um torcedor é flagrado ofendendo um rapaz com termos racistas.",
+    materia: "Constituição Federal (art. 5º, XLII)",
+    enunciado: "Segundo a Constituição, a prática do racismo constitui crime:",
+    alternativas: [
+      "inafiançável e imprescritível, sujeito à pena de reclusão.",
+      "afiançável e prescritível.",
+      "inafiançável, mas prescritível em 4 anos.",
+      "sujeito apenas a multa."
+    ],
+    correta: 0,
+    explicacao: "O art. 5º, XLII, diz que o racismo é crime inafiançável e imprescritível, sujeito à pena de reclusão. A ação de grupos armados contra a ordem constitucional também é imprescritível (inciso XLIV)."
+  },
+  {
+    area: "Direito", tipo: "Prisão por ordem do comandante",
+    narrativa: "{local}, um recruta pergunta em que casos alguém pode ser preso sem ordem judicial.",
+    materia: "Constituição Federal (art. 5º, LXI)",
+    enunciado: "Segundo a Constituição, ninguém será preso senão:",
+    alternativas: [
+      "em flagrante delito ou por ordem escrita e fundamentada de autoridade judiciária competente, salvo transgressão militar ou crime propriamente militar.",
+      "por ordem verbal de qualquer autoridade policial.",
+      "depois de condenado em segunda instância.",
+      "com autorização do Ministério Público."
+    ],
+    correta: 0,
+    explicacao: "O art. 5º, LXI, só admite prisão em flagrante ou por ordem escrita e fundamentada do juiz, com a exceção da transgressão militar e do crime propriamente militar, definidos em lei."
+  },
+
+  // ===================== ALTO RISCO (suspeito armado) =====================
+  // altoRisco: true → a ocorrência tem um bandido armado. Acertou: ele se rende. Errou: troca de tiro.
+  {
+    area: "Direito", altoRisco: true, tipo: "Assalto com refém",
+    narrativa: "{local}, um assaltante armado faz um comerciante de refém e ameaça atirar se a guarnição se aproximar.",
+    materia: "Legítima defesa (CP, art. 25, parágrafo único)",
+    enunciado: "Sobre a atuação do policial nessa situação, segundo o Código Penal, é correto afirmar:",
+    alternativas: [
+      "Considera-se também em legítima defesa o agente de segurança pública que repele agressão ou risco de agressão a vítima mantida refém durante a prática de crimes.",
+      "O policial só pode agir depois que o assaltante ferir o refém.",
+      "A legítima defesa só protege direito próprio, nunca o de outra pessoa.",
+      "Qualquer reação do policial nessa situação configura excesso punível."
+    ],
+    correta: 0,
+    explicacao: "O parágrafo único do art. 25, incluído pelo Pacote Anticrime (Lei 13.964/2019), diz que também age em legítima defesa o agente de segurança pública que repele agressão ou risco de agressão a vítima mantida refém. E a legítima defesa protege direito próprio ou de outrem."
+  },
+  {
+    area: "Direito", altoRisco: true, tipo: "Suspeito armado",
+    narrativa: "Numa abordagem {local}, um homem saca uma pistola e aponta para a guarnição.",
+    materia: "Legítima defesa (CP, art. 25)",
+    enunciado: "De acordo com o Código Penal, age em legítima defesa quem:",
+    alternativas: [
+      "usando moderadamente dos meios necessários, repele injusta agressão, atual ou iminente, a direito seu ou de outrem.",
+      "reage a uma agressão que já terminou, para dar o troco.",
+      "pratica o fato para salvar de perigo atual, que não provocou por sua vontade, direito próprio ou alheio.",
+      "cumpre ordem de superior hierárquico, ainda que manifestamente ilegal."
+    ],
+    correta: 0,
+    explicacao: "Legítima defesa é repelir injusta agressão, atual ou iminente, a direito seu ou de outrem, usando moderadamente os meios necessários (art. 25). A alternativa sobre \"perigo atual\" descreve o estado de necessidade (art. 24)."
+  },
+  {
+    area: "Direito", altoRisco: true, tipo: "Homem armado na praça",
+    narrativa: "{local}, um homem armado e alterado grita com pedestres. A guarnição chega e precisa decidir como agir.",
+    materia: "Uso da força (Lei 13.060/2014)",
+    enunciado: "Segundo a Lei 13.060/2014, os órgãos de segurança pública deverão:",
+    alternativas: [
+      "priorizar a utilização dos instrumentos de menor potencial ofensivo, desde que o seu uso não coloque em risco a integridade física ou psíquica dos policiais.",
+      "usar a arma de fogo como primeira opção em toda abordagem.",
+      "usar instrumentos de menor potencial ofensivo somente com autorização judicial.",
+      "evitar qualquer uso da força, mesmo diante de agressão contra o policial."
+    ],
+    correta: 0,
+    explicacao: "O art. 2º da Lei 13.060/2014 manda priorizar os instrumentos de menor potencial ofensivo, desde que isso não coloque em risco a integridade física ou psíquica dos policiais. A força deve ser proporcional à ameaça."
+  },
+  {
+    area: "Direito", altoRisco: true, tipo: "Cerco a assaltante",
+    narrativa: "{local}, a guarnição cerca um assaltante armado. Antes de agir, o comandante lembra a equipe dos limites da reação.",
+    materia: "Excludentes de ilicitude (CP, art. 23)",
+    enunciado: "Se o suspeito largar a arma e se render, e mesmo assim um agente continuar atirando, é correto afirmar que o agente:",
+    alternativas: [
+      "continua amparado pela legítima defesa, porque o confronto já tinha começado.",
+      "responde pelo excesso doloso ou culposo, porque a agressão já tinha cessado.",
+      "age em estrito cumprimento do dever legal.",
+      "não comete crime, porque o suspeito estava praticando um roubo."
+    ],
+    correta: 1,
+    explicacao: "Pelo parágrafo único do art. 23 do Código Penal, o agente responde pelo excesso doloso ou culposo em qualquer das excludentes. Depois da rendição não há mais agressão atual a ser repelida."
+  },
+  {
+    area: "Direito", tipo: "Suspeito em fuga",
+    narrativa: "{local}, um suspeito de furto foge correndo da guarnição. Ele está desarmado e não ameaça ninguém.",
+    materia: "Uso da força (Lei 13.060/2014)",
+    enunciado: "Sobre o uso de arma de fogo nessa situação, é correto afirmar:",
+    alternativas: [
+      "É legítimo atirar para impedir a fuga de qualquer suspeito.",
+      "Não é legítimo o uso de arma de fogo contra pessoa em fuga que esteja desarmada ou que não represente risco imediato de morte ou de lesão.",
+      "Pode atirar, desde que dê antes um tiro de advertência.",
+      "O policial deve atirar nas pernas para garantir a prisão."
+    ],
+    correta: 1,
+    explicacao: "A Lei 13.060/2014 (art. 2º, parágrafo único, I) diz que não é legítimo o uso de arma de fogo contra pessoa em fuga que esteja desarmada ou que não represente risco imediato de morte ou de lesão aos agentes ou a terceiros."
+  },
+
   // ===================== PORTUGUÊS =====================
   {
     area: "Português", tipo: "Boletim de ocorrência",
@@ -504,6 +763,106 @@ window.QUESTOES = [
     alternativas: ["Spyware", "Ransomware", "Phishing", "Firewall"],
     correta: 1,
     explicacao: "Ransomware sequestra os dados (criptografa) e pede resgate. Spyware espiona, phishing é golpe para roubar dados e firewall é proteção, não praga."
+  },
+
+  // (mais informática)
+  {
+    area: "Informática", tipo: "E-mail suspeito",
+    narrativa: "{local}, um comerciante mostra um e-mail \"do banco\" pedindo para clicar num link e digitar a senha para \"evitar o bloqueio da conta\".",
+    materia: "Informática · Segurança",
+    enunciado: "Esse tipo de golpe é chamado de:",
+    alternativas: [
+      "Phishing",
+      "Backup",
+      "Firewall",
+      "Spam de vírus em hardware"
+    ],
+    correta: 0,
+    explicacao: "Phishing é a \"pescaria\" de dados: mensagens falsas que imitam bancos e empresas para roubar senhas e informações. Banco não pede senha por e-mail."
+  },
+  {
+    area: "Informática", tipo: "Cadeado no navegador",
+    narrativa: "{local}, um colega diz que todo site com cadeado na barra de endereço é confiável.",
+    materia: "Informática · Navegação segura",
+    enunciado: "O cadeado e o \"https\" na barra de endereço indicam que:",
+    alternativas: [
+      "a conexão entre o navegador e o site é criptografada.",
+      "o site é oficial e não pode ser golpe.",
+      "o computador está livre de vírus.",
+      "a página foi aprovada pelo governo."
+    ],
+    correta: 0,
+    explicacao: "O HTTPS só garante que a comunicação está criptografada. Golpistas também usam HTTPS, então o cadeado sozinho não prova que o site é confiável."
+  },
+  {
+    area: "Informática", tipo: "Relatório apagado",
+    narrativa: "{local}, o soldado apaga sem querer um parágrafo do boletim no Word.",
+    materia: "Informática · Atalhos",
+    enunciado: "O atalho para desfazer a última ação no Word e no Windows é:",
+    alternativas: [
+      "Ctrl + Z",
+      "Ctrl + Y",
+      "Ctrl + X",
+      "Ctrl + P"
+    ],
+    correta: 0,
+    explicacao: "Ctrl + Z desfaz. Ctrl + Y refaz, Ctrl + X recorta e Ctrl + P imprime."
+  },
+  {
+    area: "Informática", tipo: "Planilha de ocorrências",
+    narrativa: "{local}, o sargento quer a média das ocorrências registradas nas células A1 até A10 de uma planilha do Excel.",
+    materia: "Informática · Excel",
+    enunciado: "A fórmula correta é:",
+    alternativas: [
+      "=MÉDIA(A1:A10)",
+      "=SOMA(A1;A10)/2",
+      "=MÉDIA(A1;A10)",
+      "=MEDIA[A1-A10]"
+    ],
+    correta: 0,
+    explicacao: "=MÉDIA(A1:A10) calcula a média do intervalo de A1 a A10 (os dois-pontos indicam intervalo). Com ponto e vírgula, a função usaria só as duas células A1 e A10."
+  },
+  {
+    area: "Informática", tipo: "E-mail para o comando",
+    narrativa: "{local}, o cabo vai mandar um e-mail para vários batalhões e não quer que um veja o endereço do outro.",
+    materia: "Informática · Correio eletrônico",
+    enunciado: "Para isso, ele deve colocar os endereços no campo:",
+    alternativas: [
+      "Cco (cópia oculta)",
+      "Cc (com cópia)",
+      "Para",
+      "Assunto"
+    ],
+    correta: 0,
+    explicacao: "No Cco (cópia oculta), cada destinatário recebe a mensagem sem ver quem mais recebeu. No Cc, todos veem todos."
+  },
+  {
+    area: "Informática", tipo: "HD da base queimou",
+    narrativa: "{local}, o computador da base quebrou e os relatórios do mês se perderam. Ninguém tinha uma cópia.",
+    materia: "Informática · Segurança",
+    enunciado: "O procedimento que teria evitado a perda dos arquivos é:",
+    alternativas: [
+      "Fazer backup (cópia de segurança) periodicamente.",
+      "Instalar mais memória RAM.",
+      "Desfragmentar o disco.",
+      "Limpar o histórico do navegador."
+    ],
+    correta: 0,
+    explicacao: "Backup é a cópia de segurança dos dados em outro local (HD externo, nuvem). É o que permite recuperar arquivos depois de pane, roubo ou ransomware."
+  },
+  {
+    area: "Informática", tipo: "Rede do batalhão",
+    narrativa: "{local}, o técnico explica que instalou um recurso que controla o que entra e sai da rede do batalhão, bloqueando conexões não autorizadas.",
+    materia: "Informática · Segurança",
+    enunciado: "Esse recurso é o:",
+    alternativas: [
+      "Firewall",
+      "Antivírus",
+      "Navegador",
+      "Driver de vídeo"
+    ],
+    correta: 0,
+    explicacao: "O firewall filtra o tráfego da rede, liberando ou bloqueando conexões conforme regras. O antivírus procura e remove programas maliciosos nos arquivos."
   },
 
   // ===================== HISTÓRIA DE PE =====================

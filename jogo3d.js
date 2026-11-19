@@ -3,7 +3,10 @@
 (() => {
   // ---------- Configuração ----------
   const POR_PLANTAO = 10;     // ocorrências por plantão
-  const RLM_POR_PLANTAO = 6;  // quantas delas são de RLM; o resto vem das outras matérias
+  const RLM_POR_PLANTAO = 5;  // RLM continua sendo a matéria com mais peso
+  const ALTO_RISCO_POR_PLANTAO = 2; // ocorrências com bandido armado (uso da força)
+  const MARIA_DA_PENHA_POR_PLANTAO = 1; // sempre cai
+  // o resto (2) vem de Direito em geral, Informática, Português e História
   const RANKS = [
     { nome: "Soldado", xp: 0 },
     { nome: "Cabo", xp: 400 },
@@ -610,7 +613,7 @@
   function carregarPessoas() {
     if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return Promise.resolve();
     const loader = new THREE.GLTFLoader();
-    return Promise.all(PESSOAS.concat(["character-soldier"]).map(n => new Promise(res => loader.load(`modelos/pessoas/${n}.glb?v=1`, g => { gltfPessoas[n] = g; res(); }, undefined, () => res()))));
+    return Promise.all(PESSOAS.concat(["character-soldier", "character-raider", "weapon-shooter"]).map(n => new Promise(res => loader.load(`modelos/pessoas/${n}.glb?v=1`, g => { gltfPessoas[n] = g; res(); }, undefined, () => res()))));
   }
 
   // Um personagem animado pronto para a cena (clone com esqueleto próprio)
@@ -627,16 +630,19 @@
     obj.scale.setScalar(altura / alt);
     const mixer = new THREE.AnimationMixer(obj);
     let atualAc = null;
-    const acao = nome => {
+    const acao = (nome, umaVez) => {
       const clip = g.animations.find(a => a.name === nome) || g.animations.find(a => a.name === "idle");
       if (!clip) return;
       const ac = mixer.clipAction(clip);
       if (ac === atualAc) return;
+      ac.setLoop(umaVez ? THREE.LoopOnce : THREE.LoopRepeat); ac.clampWhenFinished = !!umaVez;
       ac.reset().play();
-      if (atualAc) ac.crossFadeFrom(atualAc, 0.25, false);
+      if (atualAc) ac.crossFadeFrom(atualAc, 0.2, false);
       atualAc = ac;
+      if (pers.arma) pers.arma.visible = !!pers.armado && nome === "holding-right-shoot";
     };
-    return { obj, mixer, acao, x: 0, y: 0 };
+    const pers = { obj, mixer, acao, x: 0, y: 0, altLocal: alt, escala: altura / alt, armado: false };
+    return pers;
   }
   const olharPara = (p, x, y) => { p.obj.rotation.y = -Math.atan2(y - p.y, x - p.x) + Math.PI / 2; };
   const colocar = (p, x, y) => { p.x = x; p.y = y; p.obj.position.set(x, 0, y); };
@@ -645,7 +651,33 @@
   let policial = null, envolvido = null, cena = null;
   const envolvidos = {};
   const pessoasCena = []; // o trânsito também para para eles
+  // prende a arma (de desenho) no braço direito do personagem
+  function armar(pers) {
+    const g = gltfPessoas["weapon-shooter"];
+    if (!g || pers.arma) return;
+    const arma = g.scene.clone(true);
+    arma.traverse(o => {
+      if (!o.isMesh) return;
+      const m = o.material, mat = new THREE.MeshLambertMaterial({ map: m.map || null });
+      if (m.color) mat.color.copy(m.color);
+      if (mat.map) mat.map.encoding = THREE.LinearEncoding;
+      o.material = mat; o.castShadow = true;
+    });
+    const tam = new THREE.Box3().setFromObject(arma).getSize(new THREE.Vector3());
+    arma.scale.setScalar((pers.altLocal * 0.3) / Math.max(tam.x, tam.y, tam.z, 0.001));
+    // presa no corpo, no punho da pose de mira (o braço do modelo não tem ponta de mão para prender)
+    arma.position.set(-pers.altLocal * 0.2, pers.altLocal * 0.4, pers.altLocal * 0.33);
+    arma.visible = false;
+    pers.obj.add(arma);
+    pers.arma = arma;
+  }
+  let bandido = null;
   function prepararAbordagem() {
+    if (gltfPessoas["character-raider"]) {
+      bandido = montarPersonagem(gltfPessoas["character-raider"], 17.5);
+      bandido.obj.visible = false; scene.add(bandido.obj);
+      armar(bandido);
+    }
     if (gltfPessoas["character-soldier"]) {
       policial = montarPersonagem(gltfPessoas["character-soldier"], 18);
       // farda azul de PM: troca só os tons de verde da textura por azul-marinho
@@ -668,26 +700,48 @@
         o.material.map = t; o.material.needsUpdate = true;
       });
       policial.obj.visible = false; scene.add(policial.obj);
+      armar(policial);
     }
   }
   function posicionarEnvolvido(q) {
     Object.values(envolvidos).forEach(e => (e.obj.visible = false));
+    if (bandido) bandido.obj.visible = false;
     envolvido = null;
-    const nomes = PESSOAS.filter(n => gltfPessoas[n]);
-    if (!nomes.length) return;
-    const nome = nomes[idx % nomes.length];
-    if (!envolvidos[nome]) { envolvidos[nome] = montarPersonagem(gltfPessoas[nome], 17); scene.add(envolvidos[nome].obj); }
-    envolvido = envolvidos[nome];
+    if (q.altoRisco && bandido) {
+      envolvido = bandido;
+      bandido.armado = true;
+    } else {
+      const nomes = PESSOAS.filter(n => gltfPessoas[n]);
+      if (!nomes.length) return;
+      const nome = nomes[idx % nomes.length];
+      if (!envolvidos[nome]) { envolvidos[nome] = montarPersonagem(gltfPessoas[nome], 17); scene.add(envolvidos[nome].obj); }
+      envolvido = envolvidos[nome];
+    }
     // fica na calçada ao lado do ponto da ocorrência, olhando para a rua
     const naX = q.x % STEP === 0, naY = q.y % STEP === 0;
     const ox = naX ? 52 : 0, oy = naY ? 52 : 0;
     const sx = q.x + ox > LAND_W + 150 ? -1 : 1, sy = q.y + oy > WORLD_H - 60 ? -1 : 1;
     colocar(envolvido, q.x + ox * sx, q.y + oy * sy);
     olharPara(envolvido, q.x, q.y);
-    envolvido.acao("idle");
+    envolvido.acao(q.altoRisco ? "holding-right-shoot" : "idle");
     envolvido.obj.visible = true;
   }
+  // "isolar a área": carro de trânsito perto da cena vai para uma rua longe
+  function isolarArea() {
+    for (const c of transito) {
+      if (Math.hypot(c.x - car.x, c.y - car.y) > 260) continue;
+      let de, para, t = 0;
+      do {
+        de = [NOS_X[Math.floor(Math.random() * NOS_X.length)], NOS_Y[Math.floor(Math.random() * NOS_Y.length)]];
+        const vs = vizinhos(de); para = vs[Math.floor(Math.random() * vs.length)];
+      } while (Math.hypot(no(...de).x - car.x, no(...de).y - car.y) < 600 && ++t < 30);
+      const a = no(...de), b = no(...para), d = dir(a, b), r = direita(d);
+      Object.assign(c, { de, para, pontos: [], x: (a.x + b.x) / 2 + r.x * FAIXA, y: (a.y + b.y) / 2 + r.y * FAIXA, a: Math.atan2(d.y, d.x), v: 0, espera: 0, fantasma: 0, rodando: 0 });
+      proximoTrecho(c);
+    }
+  }
   function chegarNaOcorrencia() {
+    isolarArea();
     const seg = (performance.now() - inicioOcorrencia) / 1000;
     atual.bonus = seg < 25 ? 50 : seg < 40 ? 25 : 0;
     pausado = true; car.v = 0;
@@ -698,7 +752,10 @@
     const lx = Math.cos(car.a - Math.PI / 2), ly = Math.sin(car.a - Math.PI / 2);
     const sx = car.x + lx * 22, sy = car.y + ly * 22;
     const d = Math.hypot(envolvido.x - sx, envolvido.y - sy) || 1;
-    const para = { x: envolvido.x - (envolvido.x - sx) / d * 15, y: envolvido.y - (envolvido.y - sy) / d * 15 };
+    // no alto risco o policial para mais longe, de arma em punho
+    const dist = atual.altoRisco ? 48 : 15;
+    const para = { x: envolvido.x - (envolvido.x - sx) / d * dist, y: envolvido.y - (envolvido.y - sy) / d * dist };
+    policial.armado = !!atual.altoRisco;
     colocar(policial, sx, sy);
     olharPara(policial, para.x, para.y);
     policial.acao("walk");
@@ -719,14 +776,169 @@
       if (d <= passo || cena.t > 4) {
         colocar(policial, cena.para.x, cena.para.y);
         olharPara(policial, envolvido.x, envolvido.y); olharPara(envolvido, policial.x, policial.y);
-        policial.acao("interact-right"); envolvido.acao("emote-no");
+        if (atual.altoRisco) {
+          policial.acao("holding-right-shoot"); envolvido.acao("holding-right-shoot");
+          radio("Fênix 01", "Polícia! Larga a arma! Mão na cabeça!", "Polícia! Larga a arma! Mão na cabeça!");
+        } else { policial.acao("interact-right"); envolvido.acao("emote-no"); }
         cena.fase = "conversa"; cena.t = 0;
       } else colocar(policial, policial.x + dx / d * passo, policial.y + dy / d * passo);
-    } else if (cena.fase === "conversa" && cena.t > 0.9) {
+    } else if (cena.fase === "conversa" && cena.t > (atual && atual.altoRisco ? 1.6 : 0.9)) {
       cena.fase = "pergunta";
-      policial.acao("idle"); envolvido.acao("idle");
+      if (!atual.altoRisco) { policial.acao("idle"); envolvido.acao("idle"); }
       abrirOcorrencia();
+    } else if (cena.fase === "rendicao" && cena.t > 2.6) {
+      cena.fase = "fim"; seguir();
+    } else if (cena.fase === "confronto") atualizarConfronto(dt);
+  }
+
+  // ---------- Alto risco: rendição ou troca de tiro ----------
+  function desfechoAltoRisco() {
+    atual.desfecho = true;
+    if (atual.acertou) {
+      // abordagem correta: o suspeito larga a arma e se rende
+      envolvido.armado = false;
+      envolvido.acao("crouch"); policial.acao("interact-right");
+      xp += 50; atualizarHud();
+      toast("Suspeito rendido e algemado!<small>Uso da força correto: +50 XP</small>", 2400);
+      radio("Fênix 01", "QSL, central. Suspeito rendido e algemado. Sem feridos.", "Q S L, central. Suspeito rendido e algemado. Sem feridos.");
+      somAcerto();
+      cena.fase = "rendicao"; cena.t = 0;
+    } else iniciarConfronto();
+  }
+
+  const barricada = new THREE.Group();
+  (function () {
+    const madeira = lambert(0x8a5a2b), mesa = new THREE.Mesh(caixa, madeira);
+    mesa.scale.set(10, 13, 34); barricada.add(mesa);
+    const tampa = new THREE.Mesh(caixa, lambert(0x6b4422)); tampa.scale.set(11, 1.5, 35); tampa.position.y = 13; barricada.add(tampa);
+    barricada.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    barricada.visible = false; scene.add(barricada);
+  })();
+  const efeitos = []; // rastros de tiro e clarões, somem rapidinho
+  const texClarao = (() => {
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+    gr.addColorStop(0, "rgba(255,255,220,1)"); gr.addColorStop(0.4, "rgba(255,200,60,.9)"); gr.addColorStop(1, "rgba(255,120,0,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  function somTiro(longe) {
+    const a = audio(); if (!a || !somLigado) return;
+    const n = Math.floor(a.sampleRate * 0.16), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = buf; f.type = "lowpass"; f.frequency.value = longe ? 1400 : 3200; g.gain.value = longe ? 0.12 : 0.22;
+    src.connect(f); f.connect(g); g.connect(a.destination); src.start();
+    const o = a.createOscillator(), og = a.createGain(), t = a.currentTime;
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+    og.gain.setValueAtTime(longe ? 0.08 : 0.16, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    o.connect(og); og.connect(a.destination); o.start(t); o.stop(t + 0.15);
+  }
+  function disparar(de, alvo, acertou, abaixado) {
+    const ux = alvo.x - de.x, uy = alvo.y - de.y, l = Math.hypot(ux, uy) || 1;
+    const boca = new THREE.Vector3(de.x + ux / l * 8, abaixado ? 8 : 11.5, de.y + uy / l * 8);
+    const erro = acertou ? 0 : 9;
+    const fim = new THREE.Vector3(alvo.x + (Math.random() - 0.5) * erro * 2, 9 + (Math.random() - 0.3) * erro, alvo.y + (Math.random() - 0.5) * erro * 2);
+    const geo = new THREE.BufferGeometry().setFromPoints([boca, fim]);
+    const linha = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9 }));
+    const clarao = new THREE.Sprite(new THREE.SpriteMaterial({ map: texClarao, transparent: true, depthWrite: false }));
+    clarao.position.copy(boca); clarao.scale.setScalar(9);
+    scene.add(linha, clarao);
+    efeitos.push({ obj: linha, ttl: 0.07 }, { obj: clarao, ttl: 0.06 });
+    somTiro(de !== policial);
+  }
+  function atualizarEfeitos(dt) {
+    for (let i = efeitos.length - 1; i >= 0; i--) {
+      const e = efeitos[i]; e.ttl -= dt;
+      if (e.ttl <= 0) { scene.remove(e.obj); e.obj.geometry && e.obj.geometry.dispose(); e.obj.material.dispose(); efeitos.splice(i, 1); }
     }
+  }
+
+  let conf = null, abrigarPedido = false;
+  function iniciarConfronto() {
+    const b = envolvido, p = policial;
+    const dx = b.x - car.x, dy = b.y - car.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+    // policial se abriga atrás da viatura; o suspeito recua para trás de uma barricada
+    const base = { x: car.x - ux * 26, y: car.y - uy * 26 };
+    colocar(p, base.x, base.y); olharPara(p, b.x, b.y);
+    colocar(b, b.x + ux * 22, b.y + uy * 22); olharPara(b, car.x, car.y);
+    barricada.position.set(b.x - ux * 13, 0, b.y - uy * 13);
+    barricada.rotation.y = -Math.atan2(uy, ux);
+    barricada.visible = true;
+    conf = { ux, uy, base, lado: 0, vidaP: 100, vidaB: 100, abaixado: true, bEstado: "abrigado", bT: 1.4, cdP: 0, rajada: 0, fim: 0, venceu: false };
+    p.acao("crouch"); b.acao("crouch");
+    for (const q of pedestres) if (Math.hypot(q.x - car.x, q.y - car.y) < 240) q.escondido = true; // área isolada
+    cena.fase = "confronto"; cena.t = 0;
+    $("confronto").hidden = false; $("padTiro").hidden = false;
+    $("padL").hidden = !temToque; $("padR").hidden = true;
+    $("btnAbrigar").classList.add("on");
+    atualizarBarras();
+    radio("Central", "Troca de tiros! Fênix 01, abrigue-se e neutralize a ameaça.", "Atenção, Fênix zero um, troca de tiros! Abrigue-se.");
+  }
+  function atualizarBarras() {
+    $("vidaP").style.width = Math.max(0, conf.vidaP) + "%";
+    $("vidaB").style.width = Math.max(0, conf.vidaB) + "%";
+  }
+  function atualizarConfronto(dt) {
+    const c = conf; if (!c) return;
+    bandido && bandido.mixer.update(0); // (o mixer do envolvido já roda em atualizarCena)
+    if (c.fim > 0) { c.fim -= dt; if (c.fim <= 0) terminarConfronto(); return; }
+    const px = -c.uy, py = c.ux; // lateral (anda de lado atrás da viatura)
+    let mv = 0;
+    if (keys["arrowleft"] || keys["a"]) mv -= 1;
+    if (keys["arrowright"] || keys["d"]) mv += 1;
+    c.lado = Math.max(-26, Math.min(26, c.lado + mv * 45 * dt));
+    colocar(policial, c.base.x + px * c.lado, c.base.y + py * c.lado);
+    olharPara(policial, envolvido.x, envolvido.y);
+    if (abrigarPedido) { abrigarPedido = false; c.abaixado = !c.abaixado; }
+    // tiro do policial: mira automática; acerta bem quando o suspeito aparece
+    c.cdP -= dt;
+    const atirando = keys[" "] || keys["tiro"];
+    if (atirando && c.cdP <= 0) {
+      c.cdP = 0.32; c.abaixado = false;
+      const exposto = c.bEstado === "atirando";
+      const acertou = Math.random() < (exposto ? 0.62 : 0.08);
+      disparar(policial, envolvido, acertou, false);
+      if (acertou) { c.vidaB -= 34; envolvido.obj.position.y = 0; }
+    }
+    $("btnAbrigar").classList.toggle("on", c.abaixado);
+    policial.acao(c.abaixado ? "crouch" : "holding-right-shoot");
+    // suspeito: abriga, levanta e dispara uma rajada, abriga de novo
+    c.bT -= dt;
+    if (c.bEstado === "abrigado" && c.bT <= 0) { c.bEstado = "atirando"; c.bT = 1.5; c.rajada = 0.3; envolvido.acao("holding-right-shoot"); }
+    else if (c.bEstado === "atirando") {
+      c.rajada -= dt;
+      if (c.rajada <= 0) {
+        c.rajada = 0.45;
+        const acerta = !c.abaixado && Math.random() < 0.38;
+        disparar(envolvido, policial, acerta, false);
+        if (acerta) { c.vidaP -= 17; const dn = $("dano"); dn.classList.remove("on"); void dn.offsetWidth; dn.classList.add("on"); }
+      }
+      if (c.bT <= 0) { c.bEstado = "abrigado"; c.bT = 1 + Math.random() * 1.3; envolvido.acao("crouch"); }
+    }
+    atualizarBarras();
+    if (c.vidaB <= 0) {
+      c.fim = 2.6; c.venceu = true;
+      envolvido.armado = false; c.vidaB = 0; atualizarBarras();
+      envolvido.acao("die", true); policial.acao("idle");
+      xp += 60; atualizarHud();
+      toast("Ameaça neutralizada!<small>+60 XP</small>", 2400);
+      radio("Fênix 01", "QSL, central. Ameaça neutralizada. Solicito o SAMU no local.", "Q S L, central. Ameaça neutralizada. Solicito o SAMU no local.");
+    } else if (c.vidaP <= 0) {
+      c.fim = 2.6; c.venceu = false;
+      policial.acao("die", true);
+      toast("Você foi ferido!<small>A guarnição de apoio assumiu a ocorrência</small>", 2600);
+      radio("Central", "Policial ferido! Apoio a caminho, Fênix 01.", "Policial ferido! Apoio a caminho.");
+    }
+  }
+  function terminarConfronto() {
+    const venceu = conf && conf.venceu;
+    conf = null; barricada.visible = false;
+    for (const q of pedestres) q.escondido = false;
+    $("confronto").hidden = true; $("padTiro").hidden = true; $("dano").classList.remove("on");
+    historico.push({ tipo: atual.tipo, materia: venceu ? "Troca de tiro: ameaça neutralizada" : "Troca de tiro: policial ferido", certo: venceu });
+    cena.fase = "fim";
+    seguir();
   }
   function encerrarCena() {
     if (policial) policial.obj.visible = false;
@@ -785,6 +997,7 @@
   }
   function atualizarPedestres(dt) {
     for (const p of pedestres) {
+      if (p.escondido) { p.obj.visible = false; continue; } // área isolada durante a troca de tiro
       const perto = Math.abs(p.x - car.x) < VIS && Math.abs(p.y - car.y) < VIS;
       p.obj.visible = perto;
       if (p.morto) {
@@ -907,8 +1120,13 @@
   function montarFila() {
     const banco = window.QUESTOES;
     const rlm = embaralhar(banco.filter(q => q.area === "RLM")).slice(0, RLM_POR_PLANTAO);
-    const outras = embaralhar(banco.filter(q => q.area !== "RLM")).slice(0, POR_PLANTAO - rlm.length);
-    const escolhidas = embaralhar([...rlm, ...outras]);
+    const alto = embaralhar(banco.filter(q => q.altoRisco)).slice(0, ALTO_RISCO_POR_PLANTAO);
+    const mp = embaralhar(banco.filter(q => q.tema === "maria-da-penha")).slice(0, MARIA_DA_PENHA_POR_PLANTAO);
+    const outras = embaralhar(banco.filter(q => q.area !== "RLM" && !q.altoRisco && q.tema !== "maria-da-penha"))
+      .slice(0, POR_PLANTAO - rlm.length - alto.length - mp.length);
+    // alto risco nunca é a primeira ocorrência (o jogador ainda está pegando o jeito)
+    let escolhidas = embaralhar([...rlm, ...mp, ...outras, ...alto]);
+    if (escolhidas[0].altoRisco) { const k = escolhidas.findIndex(q => !q.altoRisco); [escolhidas[0], escolhidas[k]] = [escolhidas[k], escolhidas[0]]; }
     const livres = embaralhar(Object.entries(PONTOS).flatMap(([b, l]) => l.map(([x, y]) => ({ b, x, y }))));
     const pegar = b => {
       const k = Math.max(0, livres.findIndex(p => !b || p.b === b));
@@ -923,7 +1141,7 @@
       narrativa = narrativa.charAt(0).toUpperCase() + narrativa.slice(1);
       const ordem = embaralhar(q.alternativas.map((t, k) => k));
       return { ...q, bairro: p.b, x: p.x, y: p.y, narrativa,
-        alternativas: ordem.map(k => q.alternativas[k]), correta: ordem.indexOf(q.correta) };
+        alternativas: ordem.map(k => q.alternativas[k]), correta: ordem.indexOf(q.correta), bonus: undefined, acertou: undefined, desfecho: false };
     });
   }
 
@@ -1058,7 +1276,7 @@
     // destrava áudio e voz no toque do botão (o iPhone exige isso)
     audio();
     try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } } catch (e) {}
-    encerrarCena();
+    encerrarCena(); conf = null; barricada.visible = false; $("confronto").hidden = true; $("padTiro").hidden = true;
     fila = montarFila(); idx = 0; xp = 0; acertos = 0; historico = [];
     car.x = 1200; car.y = 1200; car.a = -Math.PI / 2; car.v = 0;
     inicio = performance.now();
@@ -1118,6 +1336,7 @@
 
   function responder(k) {
     const q = atual, certo = k === q.correta;
+    q.acertou = certo;
     const botoes = [...$("qAlts").children];
     botoes.forEach((b, i) => { b.disabled = true; if (i === q.correta) b.classList.add("ok"); });
     const antes = rankDe(xp);
@@ -1141,6 +1360,7 @@
 
   function seguir() {
     $("sQuestion").classList.remove("on");
+    if (atual && atual.altoRisco && !atual.desfecho && cena) { desfechoAltoRisco(); return; }
     encerrarCena(); mostrarPad(true);
     idx++;
     if (idx === LEAD_DEPOIS_DE && !leadSalvo()) { $("sLead").classList.add("on"); return; }
@@ -1163,7 +1383,8 @@
 
   function fim() {
     pausado = true; atual = null; marcador.visible = false;
-    encerrarCena(); Object.values(envolvidos).forEach(e => (e.obj.visible = false));
+    encerrarCena(); Object.values(envolvidos).forEach(e => (e.obj.visible = false)); if (bandido) bandido.obj.visible = false;
+    conf = null; barricada.visible = false; $("confronto").hidden = true; $("padTiro").hidden = true;
     $("hud").hidden = true; $("mute").hidden = true; $("sireneBtn").hidden = true; $("radio").hidden = true; mostrarPad(false);
     sireneLigada = false; sireneManual = null;
     const r = rankDe(xp), erros = fila.length - acertos;
@@ -1236,6 +1457,16 @@
     if (!somLigado && window.speechSynthesis) speechSynthesis.cancel();
   };
   $("sireneBtn").onclick = alternarSirene;
+  // botões do confronto: ATIRAR (segurar) e ABRIGAR (tocar)
+  (function () {
+    const bt = $("btnAtirar");
+    const on = e => { e.preventDefault(); keys["tiro"] = true; bt.classList.add("on"); try { bt.setPointerCapture(e.pointerId); } catch (_) {} };
+    const off = () => { keys["tiro"] = false; bt.classList.remove("on"); };
+    bt.addEventListener("pointerdown", on); bt.addEventListener("pointerup", off); bt.addEventListener("pointercancel", off); bt.addEventListener("lostpointercapture", off);
+    bt.addEventListener("contextmenu", e => e.preventDefault());
+    $("btnAbrigar").addEventListener("pointerdown", e => { e.preventDefault(); abrigarPedido = true; });
+    addEventListener("keydown", e => { if (conf && (e.key === "c" || e.key === "C" || e.key === "Shift")) abrigarPedido = true; if (e.key === " ") e.preventDefault(); });
+  })();
   addEventListener("keydown", e => { if (e.key.toLowerCase() === "h" && !pausado) alternarSirene(); });
 
   // ---------- Física (a mesma do 2D, no plano do chão) ----------
@@ -1293,6 +1524,14 @@
   const olhar = new THREE.Vector3();
   let camAng = car.a;
   function atualizarCamera(dt) {
+    if (conf && policial && envolvido) {
+      const c = conf, alt = c.abaixado ? 30 : 36;
+      const pos = new THREE.Vector3(policial.x - c.ux * 68 + -c.uy * 22, alt, policial.y - c.uy * 68 + c.ux * 22);
+      camPos.lerp(pos, Math.min(1, dt * 5));
+      camera.position.copy(camPos);
+      camera.lookAt(envolvido.x, 10, envolvido.y);
+      return;
+    }
     if (cena && envolvido) {
       // câmera de cena: de lado, enquadrando viatura, policial e envolvido
       const mx = (car.x + envolvido.x) / 2, my = (car.y + envolvido.y) / 2;
@@ -1428,7 +1667,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (!pausado) atualizar(dt);
-    atualizarTransito(dt); atualizarPedestres(dt); if (!pausado) resolverBatidas(dt); atualizarCena(dt); atualizarSom(); // a cidade segue viva até com a pergunta aberta
+    atualizarTransito(dt); atualizarPedestres(dt); if (!pausado) resolverBatidas(dt); atualizarCena(dt); atualizarEfeitos(dt); atualizarSom(); // a cidade segue viva até com a pergunta aberta
     desenhar(t, dt);
     ajustarQualidade(dt);
     requestAnimationFrame(loop);
@@ -1436,5 +1675,5 @@
 
   redimensionar();
   requestAnimationFrame(loop);
-  window.__plantao = { get cena() { return cena; }, transito, pedestres, car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
+  window.__plantao = { scene, get policial() { return policial; }, get bandido() { return bandido; }, get conf() { return conf; }, get fila() { return fila; }, get idx() { return idx; }, get cena() { return cena; }, transito, pedestres, car, get atual() { return atual; }, get xp() { return xp; }, abrirOcorrencia, renderer, get qualidade() { return qualidade; } }; // para testes
 })();
