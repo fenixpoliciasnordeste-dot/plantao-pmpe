@@ -176,6 +176,7 @@
   const $ = id => document.getElementById(id);
   const cv = $("game");
   const temToque = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  if (temToque) document.body.classList.add("toque");
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !temToque, powerPreference: "high-performance" });
@@ -1041,6 +1042,7 @@
   function atualizarHud() {
     const r = rankDe(xp), i = RANKS.indexOf(r), prox = RANKS[i + 1];
     $("rankName").textContent = r.nome;
+    $("estrelas").innerHTML = "★".repeat(i + 1) + `<i>${"★".repeat(RANKS.length - i - 1)}</i>`;
     $("xpText").textContent = prox ? `${xp} XP · ${prox.nome} em ${prox.xp} XP` : `${xp} XP · patente máxima`;
     $("xpBar").style.width = prox ? `${Math.round(((xp - r.xp) / (prox.xp - r.xp)) * 100)}%` : "100%";
   }
@@ -1354,16 +1356,47 @@
     minimapa();
   }
 
+  // Radar: gira com a viatura (a frente sempre para cima), como nos jogos de mundo aberto
+  const RAIO_RADAR = 650; // quanto do mundo cabe do centro até a borda
   function minimapa() {
-    const sx = mm.width / WORLD_W, sy = mm.height / WORLD_H;
-    mctx.clearRect(0, 0, mm.width, mm.height);
-    mctx.drawImage(map, 0, 0, mm.width, mm.height);
-    mctx.fillStyle = "rgba(11,24,48,.25)"; mctx.fillRect(0, 0, mm.width, mm.height);
-    if (atual) { mctx.fillStyle = "#e5484d"; mctx.beginPath(); mctx.arc(atual.x * sx, atual.y * sy, 7, 0, 7); mctx.fill(); }
-    mctx.save(); mctx.translate(car.x * sx, car.y * sy); mctx.rotate(car.a);
-    mctx.fillStyle = "#f2b632"; mctx.strokeStyle = "#0b1830"; mctx.lineWidth = 2;
-    mctx.beginPath(); mctx.moveTo(9, 0); mctx.lineTo(-6, -6); mctx.lineTo(-6, 6); mctx.closePath(); mctx.fill(); mctx.stroke();
+    const W = mm.width, R = W / 2, esc = (R - 6) / RAIO_RADAR, giro = -car.a - Math.PI / 2;
+    mctx.clearRect(0, 0, W, W);
+    mctx.save();
+    mctx.beginPath(); mctx.arc(R, R, R - 3, 0, Math.PI * 2); mctx.clip();
+    mctx.fillStyle = "#16324f"; mctx.fillRect(0, 0, W, W);
+    mctx.translate(R, R); mctx.rotate(giro); mctx.scale(esc, esc); mctx.translate(-car.x, -car.y);
+    mctx.globalAlpha = 0.92; mctx.drawImage(map, 0, 0); mctx.globalAlpha = 1;
+    mctx.fillStyle = "rgba(11,24,48,.28)"; mctx.fillRect(car.x - RAIO_RADAR * 1.5, car.y - RAIO_RADAR * 1.5, RAIO_RADAR * 3, RAIO_RADAR * 3);
+    // trânsito
+    mctx.fillStyle = "#e8edf5";
+    for (const c of transito) { mctx.beginPath(); mctx.arc(c.x, c.y, 11, 0, Math.PI * 2); mctx.fill(); }
     mctx.restore();
+    // ocorrência: ponto vermelho; se estiver longe, fica preso na borda
+    if (atual && marcador.visible) {
+      const dx = atual.x - car.x, dy = atual.y - car.y;
+      const rx = (dx * Math.cos(giro) - dy * Math.sin(giro)) * esc, ry = (dx * Math.sin(giro) + dy * Math.cos(giro)) * esc;
+      const d = Math.hypot(rx, ry), lim = R - 16, k = d > lim ? lim / d : 1;
+      const px = R + rx * k, py = R + ry * k, pulso = 7 + Math.sin(performance.now() / 180) * 2;
+      mctx.fillStyle = "#e5484d"; mctx.strokeStyle = "#fff"; mctx.lineWidth = 3;
+      mctx.beginPath(); mctx.arc(px, py, pulso + (k < 1 ? 1 : 3), 0, Math.PI * 2); mctx.fill(); mctx.stroke();
+      if (k < 1) { // seta apontando para fora
+        const ang = Math.atan2(ry, rx);
+        mctx.save(); mctx.translate(px, py); mctx.rotate(ang);
+        mctx.beginPath(); mctx.moveTo(16, 0); mctx.lineTo(8, -6); mctx.lineTo(8, 6); mctx.closePath(); mctx.fillStyle = "#fff"; mctx.fill();
+        mctx.restore();
+      }
+    }
+    // viatura no centro, sempre para cima
+    mctx.save(); mctx.translate(R, R);
+    mctx.fillStyle = "#f2b632"; mctx.strokeStyle = "#0b1830"; mctx.lineWidth = 3;
+    mctx.beginPath(); mctx.moveTo(0, -14); mctx.lineTo(10, 11); mctx.lineTo(0, 6); mctx.lineTo(-10, 11); mctx.closePath(); mctx.fill(); mctx.stroke();
+    mctx.restore();
+    // norte
+    const nx = R + Math.sin(-giro) * 0 + (0 * Math.cos(giro) - (-1) * Math.sin(giro)) * (R - 18), ny = R + (0 * Math.sin(giro) + (-1) * Math.cos(giro)) * (R - 18);
+    mctx.fillStyle = "#0b1830"; mctx.beginPath(); mctx.arc(nx, ny, 13, 0, Math.PI * 2); mctx.fill();
+    mctx.fillStyle = "#fff"; mctx.font = "800 16px system-ui"; mctx.textAlign = "center"; mctx.textBaseline = "middle"; mctx.fillText("N", nx, ny + 1);
+    // borda
+    mctx.strokeStyle = "rgba(255,255,255,.85)"; mctx.lineWidth = 5; mctx.beginPath(); mctx.arc(R, R, R - 4, 0, Math.PI * 2); mctx.stroke();
   }
 
   // Qualidade automática: se o aparelho estiver lento, diminui a resolução

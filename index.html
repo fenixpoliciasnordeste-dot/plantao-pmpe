@@ -30,21 +30,31 @@
     display: flex; gap: 10px; align-items: flex-start; pointer-events: none; }
   .pill { background: rgba(11, 24, 48, .86); border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
     padding: 8px 12px; backdrop-filter: blur(6px); }
-  .rank { min-width: 150px; }
-  .rank b { display: block; font-size: 15px; color: var(--gold); }
+  .rank { min-width: 190px; }
+  .rank-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .rank b { font-size: 15px; color: #fff; text-transform: uppercase; letter-spacing: .05em; }
+  .estrelas { color: var(--gold); font-size: 17px; letter-spacing: 2px; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .estrelas i { font-style: normal; color: rgba(255,255,255,.25); }
   .rank small { color: var(--muted); font-size: 11px; }
   .bar { height: 6px; background: rgba(255,255,255,.15); border-radius: 4px; margin-top: 5px; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .4s; }
-  .mission { flex: 1; text-align: center; font-size: 13px; line-height: 1.35; }
+  .mission { flex: 1; text-align: center; font-size: 14px; line-height: 1.35; font-weight: 600; }
   .mission b { color: var(--gold); }
   .mission .dist { color: var(--muted); font-size: 12px; }
-  #minimap { width: 120px; height: 90px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18);
+  /* radar redondo: embaixo à esquerda no computador, em cima à esquerda no celular */
+  .radar { position: fixed; left: 18px; bottom: calc(env(safe-area-inset-bottom) + 18px); width: 170px; height: 170px;
+    border-radius: 50%; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+  /* aparelho de toque (tem controle embaixo): radar vai para cima */
+  body.toque .hud { padding-left: 128px; }
+  body.toque .radar { top: calc(env(safe-area-inset-top) + 10px); bottom: auto; left: 12px; width: 106px; height: 106px; }
+  #minimap { border: 0;
     background: #0b1830; }
   @media (max-width: 560px) {
     .hud { flex-wrap: wrap; gap: 8px; }
+    .hud { padding-left: 128px; }
     .rank { flex: 1; min-width: 0; }
-    .mission { order: 3; flex-basis: 100%; padding: 6px 10px; }
-    #minimap { width: 96px; height: 72px; }
+    .mission { order: 3; flex-basis: 100%; padding: 6px 10px; font-size: 13px; }
+    .radar { top: calc(env(safe-area-inset-top) + 10px); bottom: auto; left: 12px; width: 106px; height: 106px; }
   }
   .narr, .stem { white-space: pre-line; }
 
@@ -136,13 +146,13 @@
 <canvas id="game"></canvas>
 
 <div class="hud" id="hud" hidden>
+  <div class="pill mission" id="mission"></div>
   <div class="pill rank">
-    <b id="rankName">Soldado</b>
+    <div class="rank-topo"><b id="rankName">Soldado</b><span class="estrelas" id="estrelas">★<i>★★</i></span></div>
     <small id="xpText">0 XP</small>
     <div class="bar"><i id="xpBar"></i></div>
   </div>
-  <div class="pill mission" id="mission"></div>
-  <canvas id="minimap" width="240" height="180"></canvas>
+  <canvas id="minimap" class="radar" width="300" height="300"></canvas>
 </div>
 <div class="hint" id="hint" hidden>Setas ou W A S D para dirigir</div>
 <button class="mute" id="mute" hidden aria-label="Som">🔊</button>
@@ -228,6 +238,6 @@
 <script src="three.min.js?v=r128"></script>
 <script src="GLTFLoader.js?v=r128"></script>
 <script src="SkeletonUtils.js?v=r128"></script>
-<script src="jogo3d.js?v=14"></script>
+<script src="jogo3d.js?v=16"></script>
 </body>
 </html>
