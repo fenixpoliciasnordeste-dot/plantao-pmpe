@@ -692,7 +692,8 @@
     policial.obj.visible = true;
     pessoasCena.length = 0; pessoasCena.push(policial, envolvido);
     mostrarPad(false); marcador.visible = false; gps.visible = false;
-    somSirene();
+    sireneLigada = false; sireneManual = null; $("sireneBtn").classList.remove("on");
+    radio("Fênix 01", "QSL, central. Guarnição no local.", "Q S L, central. Guarnição no local.");
     cena = { fase: "andando", t: 0, para };
   }
   function atualizarCena(dt) {
@@ -862,6 +863,97 @@
   const somErro = () => bip([220, 160], 0.16, "square", 0.05);
   const somSirene = () => bip([900, 650, 900, 650], 0.13, "triangle", 0.05);
 
+  // ---------- Sirene, motor e rádio ----------
+  // Tudo sintetizado na hora (sem arquivo de áudio): fica leve e não depende de download.
+  let sirene = null, motor = null;
+  let sireneLigada = false, sireneManual = null; // null = automática; true/false = o jogador escolheu
+  function audio() {
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === "suspended") ac.resume();
+      return ac;
+    } catch (e) { return null; }
+  }
+  function montarSirene() {
+    const a = audio(); if (!a || sirene) return;
+    // sobe e desce (wail): oscilador cuja frequência é puxada por um LFO lento
+    const o = a.createOscillator(), lfo = a.createOscillator(), prof = a.createGain(), filtro = a.createBiquadFilter(), g = a.createGain();
+    o.type = "sawtooth"; o.frequency.value = 950;
+    lfo.type = "triangle"; lfo.frequency.value = 0.55; prof.gain.value = 420;
+    lfo.connect(prof); prof.connect(o.frequency);
+    filtro.type = "lowpass"; filtro.frequency.value = 2400;
+    g.gain.value = 0;
+    o.connect(filtro); filtro.connect(g); g.connect(a.destination);
+    o.start(); lfo.start();
+    sirene = { g };
+  }
+  function montarMotor() {
+    const a = audio(); if (!a || motor) return;
+    const o = a.createOscillator(), o2 = a.createOscillator(), filtro = a.createBiquadFilter(), g = a.createGain();
+    o.type = "sawtooth"; o2.type = "square"; o.frequency.value = 45; o2.frequency.value = 22.5;
+    filtro.type = "lowpass"; filtro.frequency.value = 380;
+    g.gain.value = 0;
+    o.connect(filtro); o2.connect(filtro); filtro.connect(g); g.connect(a.destination);
+    o.start(); o2.start();
+    motor = { o, o2, g, filtro };
+  }
+  function atualizarSom() {
+    if (!ac) return;
+    const t = ac.currentTime, ativo = somLigado && !pausado;
+    const querSirene = sireneManual === null ? sireneLigada : sireneManual;
+    if (sirene) sirene.g.gain.setTargetAtTime(ativo && querSirene ? 0.045 : 0, t, 0.08);
+    if (motor) {
+      const r = Math.min(1, Math.abs(car.v) / 360);
+      motor.o.frequency.setTargetAtTime(45 + r * 95, t, 0.1);
+      motor.o2.frequency.setTargetAtTime(22.5 + r * 47, t, 0.1);
+      motor.filtro.frequency.setTargetAtTime(300 + r * 700, t, 0.1);
+      motor.g.gain.setTargetAtTime(ativo ? 0.018 + r * 0.03 : 0, t, 0.1);
+    }
+  }
+  function chiado(dur = 0.35) {
+    const a = audio(); if (!a || !somLigado) return;
+    const n = Math.floor(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    s.buffer = buf; f.type = "bandpass"; f.frequency.value = 1700; f.Q.value = 0.8; g.gain.value = 0.07;
+    s.connect(f); f.connect(g); g.connect(a.destination); s.start();
+  }
+  // voz do rádio: a voz em português do aparelho, com chiado e bipe antes
+  let vozPT = null;
+  function acharVoz() {
+    if (!window.speechSynthesis) return;
+    const vs = speechSynthesis.getVoices();
+    vozPT = vs.find(v => /pt[-_]BR/i.test(v.lang)) || vs.find(v => /^pt/i.test(v.lang)) || null;
+  }
+  if (window.speechSynthesis) { acharVoz(); speechSynthesis.onvoiceschanged = acharVoz; }
+  function radio(quem, texto, fala) {
+    const box = $("radio");
+    box.querySelector("b").textContent = quem;
+    box.querySelector("span").textContent = texto;
+    box.hidden = false;
+    clearTimeout(radio._t); radio._t = setTimeout(() => (box.hidden = true), 6500);
+    if (!somLigado) return;
+    chiado(0.3); bip([1250], 0.07, "sine", 0.05);
+    if (window.speechSynthesis && fala !== false) {
+      setTimeout(() => {
+        try {
+          speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(fala || texto);
+          u.lang = "pt-BR"; if (vozPT) u.voice = vozPT;
+          u.rate = 1.12; u.pitch = 0.85; u.volume = 0.9;
+          u.onend = () => { chiado(0.18); };
+          speechSynthesis.speak(u);
+        } catch (e) {}
+      }, 320);
+    }
+  }
+  function alternarSirene() {
+    const agora = sireneManual === null ? sireneLigada : sireneManual;
+    sireneManual = !agora;
+    $("sireneBtn").classList.toggle("on", sireneManual);
+    montarSirene();
+  }
+
   // ---------- Patentes ----------
   const rankDe = v => RANKS.reduce((r, k) => (v >= k.xp ? k : r), RANKS[0]);
   function atualizarHud() {
@@ -879,12 +971,15 @@
   const mostrarPad = v => { $("padL").hidden = $("padR").hidden = !(v && temToque); };
 
   function iniciar() {
+    // destrava áudio e voz no toque do botão (o iPhone exige isso)
+    audio();
+    try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } } catch (e) {}
     encerrarCena();
     fila = montarFila(); idx = 0; xp = 0; acertos = 0; historico = [];
     car.x = 1200; car.y = 1200; car.a = -Math.PI / 2; car.v = 0;
     inicio = performance.now();
     ["sStart", "sEnd"].forEach(s => $(s).classList.remove("on"));
-    $("hud").hidden = false; $("mute").hidden = false; $("hint").hidden = temToque;
+    $("hud").hidden = false; $("mute").hidden = false; $("sireneBtn").hidden = false; $("hint").hidden = temToque;
     mostrarPad(true);
     setTimeout(() => ($("hint").hidden = true), 6000);
     atualizarHud();
@@ -902,8 +997,11 @@
     rotulo.position.y = 112; marcador.add(rotulo);
     marcador.visible = true;
     posicionarEnvolvido(atual);
-    somSirene();
-    toast(`Nova ocorrência<small>${atual.tipo} · ${atual.bairro}</small>`, 2200);
+    sireneLigada = true; sireneManual = null; $("sireneBtn").classList.add("on");
+    montarSirene(); montarMotor();
+    const cod = String(1000 + Math.floor(Math.random() * 9000));
+    radio("Central", `Fênix 01, ocorrência ${cod}: ${atual.tipo.toLowerCase()} ${LOCAL[atual.bairro]}. Desloque.`,
+      `Fênix zero um, ocorrência de ${atual.tipo.toLowerCase()}, ${LOCAL[atual.bairro]}. Desloque.`);
   }
 
   function abrirOcorrencia() {
@@ -982,7 +1080,8 @@
   function fim() {
     pausado = true; atual = null; marcador.visible = false;
     encerrarCena(); Object.values(envolvidos).forEach(e => (e.obj.visible = false));
-    $("hud").hidden = true; $("mute").hidden = true; mostrarPad(false);
+    $("hud").hidden = true; $("mute").hidden = true; $("sireneBtn").hidden = true; $("radio").hidden = true; mostrarPad(false);
+    sireneLigada = false; sireneManual = null;
     const r = rankDe(xp), erros = fila.length - acertos;
     const min = Math.max(1, Math.round((performance.now() - inicio) / 60000));
     $("endTitle").textContent = `Você terminou como ${r.nome}`;
@@ -1048,7 +1147,12 @@
   $("btnNext").onclick = seguir;
   $("btnShare").onclick = compartilhar;
   $("leadForm").addEventListener("submit", salvarLead);
-  $("mute").onclick = () => { somLigado = !somLigado; $("mute").textContent = somLigado ? "🔊" : "🔇"; };
+  $("mute").onclick = () => {
+    somLigado = !somLigado; $("mute").textContent = somLigado ? "🔊" : "🔇";
+    if (!somLigado && window.speechSynthesis) speechSynthesis.cancel();
+  };
+  $("sireneBtn").onclick = alternarSirene;
+  addEventListener("keydown", e => { if (e.key.toLowerCase() === "h" && !pausado) alternarSirene(); });
 
   // ---------- Física (a mesma do 2D, no plano do chão) ----------
   const R = 15;
@@ -1210,7 +1314,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (!pausado) atualizar(dt);
-    atualizarTransito(dt); atualizarPedestres(dt); atualizarCena(dt); // a cidade segue viva até com a pergunta aberta
+    atualizarTransito(dt); atualizarPedestres(dt); atualizarCena(dt); atualizarSom(); // a cidade segue viva até com a pergunta aberta
     desenhar(t, dt);
     ajustarQualidade(dt);
     requestAnimationFrame(loop);
