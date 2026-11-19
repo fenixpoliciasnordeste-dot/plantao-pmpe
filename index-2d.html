@@ -797,6 +797,16 @@
 // Aviso de por que caiu no 2D
 (() => {
   const m = new URLSearchParams(location.search).get("motivo");
+  // Se agora o navegador libera o 3D, volta sozinho para a versão 3D (uma vez por sessão, para não ficar em loop)
+  try {
+    const c = document.createElement("canvas");
+    const temGL = !!(c.getContext("webgl") || c.getContext("experimental-webgl"));
+    if (temGL && !sessionStorage.getItem("plantao_tentou3d")) {
+      sessionStorage.setItem("plantao_tentou3d", "1");
+      location.replace("index.html?v=4");
+      return;
+    }
+  } catch (e) {}
   if (!m) return;
   const ua = navigator.userAgent;
   const noApp = /Instagram|FBAN|FBAV|WhatsApp|TikTok|musical_ly|Bytedance/i.test(ua);
